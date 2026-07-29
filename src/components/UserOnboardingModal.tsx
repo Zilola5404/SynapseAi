@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StrategySettings, RiskSettings } from '../types';
-import { Sparkles, Shield, TrendingUp, Award, Wallet, Cpu, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Shield, TrendingUp, Award, Wallet, Cpu, ArrowRight, ArrowLeft, CheckCircle2, X } from 'lucide-react';
 
 interface UserOnboardingModalProps {
   isOpen: boolean;
@@ -98,9 +98,19 @@ export const UserOnboardingModal: React.FC<UserOnboardingModalProps> = ({
               <p className="text-xs text-cyan-300">Персональная настройка AI-Трейдера за 3 простых шага</p>
             </div>
           </div>
-          <span className="text-xs font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-2.5 py-1 rounded-full font-bold">
-            Шаг {Math.min(step, 3)} из 3
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-2.5 py-1 rounded-full font-bold">
+              Шаг {Math.min(step, 3)} из 3
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors ml-1"
+              title="Закрыть окно"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Progress Bar */}
@@ -314,17 +324,20 @@ export const UserOnboardingModal: React.FC<UserOnboardingModalProps> = ({
 
         {/* Action Controls */}
         <div className="flex justify-between items-center pt-2 border-t border-white/10">
-          {step > 1 && step < 4 ? (
-            <button
-              type="button"
-              onClick={() => setStep((prev) => (prev - 1) as any)}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 text-neutral-400 rounded-xl text-xs font-semibold"
-            >
-              Назад
-            </button>
-          ) : (
-            <div />
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (step > 1) {
+                setStep((prev) => (prev - 1) as any);
+              } else {
+                onClose();
+              }
+            }}
+            className="px-4 py-2 bg-white/5 hover:bg-white/10 text-neutral-300 hover:text-white border border-white/10 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Назад</span>
+          </button>
 
           {step < 3 && (
             <button
@@ -352,7 +365,7 @@ export const UserOnboardingModal: React.FC<UserOnboardingModalProps> = ({
             <button
               type="button"
               onClick={handleFinish}
-              className="w-full py-3 bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-300 hover:to-emerald-400 text-black font-bold rounded-xl text-xs shadow-lg shadow-green-500/20 transition flex items-center justify-center gap-2"
+              className="py-2.5 px-5 bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-300 hover:to-emerald-400 text-black font-bold rounded-xl text-xs shadow-lg shadow-green-500/20 transition flex items-center justify-center gap-2"
             >
               <Sparkles className="w-4 h-4" />
               <span>Запустить Synapse AI Трейдер</span>

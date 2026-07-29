@@ -130,10 +130,14 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           {currentUser && (
-            <div className="px-3 py-1.5 rounded-xl border border-green-500/30 bg-green-500/10 text-xs font-mono text-green-300 hidden md:flex items-center gap-2">
+            <button
+              onClick={onOpenOnboarding}
+              className="px-3 py-1.5 rounded-xl border border-green-500/30 bg-green-500/10 text-xs font-mono text-green-300 hidden md:flex items-center gap-2 hover:bg-green-500/20 transition cursor-pointer"
+              title="Открыть профиль и настройки AI"
+            >
               <span className="w-2 h-2 rounded-full bg-green-400" />
               <span className="font-bold truncate max-w-[120px]">{currentUser.name}</span>
-            </div>
+            </button>
           )}
 
           {/* AI Onboarding Wizard Button */}
