@@ -186,6 +186,7 @@ export const INITIAL_RISK_SETTINGS: RiskSettings = {
   maxDrawdownPct: 8.0,
   maxPositionSizePct: 5.0,
   maxLeverage: 10,
+  maxOpenPositions: 3,
   defaultStopLossPct: 2.0,
   defaultTakeProfitPct: 5.0,
   enableTrailingStop: true,

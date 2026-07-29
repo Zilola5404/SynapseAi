@@ -18,6 +18,17 @@ export interface CryptoAsset {
   sentimentScore: number; // 0-100 (0 bearish, 100 bullish)
   orderBookImbalance: number; // -100 to +100 (negative = sell wall, positive = buy wall)
   sparkline: number[];
+  aiDecision?: {
+    recommendation?: 'STRONG_BUY' | 'BUY' | 'NEUTRAL' | 'SELL' | 'STRONG_SELL';
+    confidencePct?: number;
+    riskScore?: number;
+  };
+  technicalAnalysis?: {
+    indicators?: {
+      rsi?: { val: number; signal: string };
+      macd?: { signal: string };
+    };
+  };
 }
 
 export interface Candlestick {
@@ -75,6 +86,7 @@ export interface RiskSettings {
   maxDrawdownPct: number;
   maxPositionSizePct: number; // e.g. 5% of equity
   maxLeverage: number; // 1x - 20x
+  maxOpenPositions: number; // e.g. 3
   defaultStopLossPct: number; // 1-10%
   defaultTakeProfitPct: number; // 2-30%
   enableTrailingStop: boolean;
@@ -129,6 +141,22 @@ export interface PortfolioStats {
   peakEquityUsdt: number;
 }
 
+export interface GroundingSource {
+  title: string;
+  uri: string;
+}
+
+export interface MarketNewsArticle {
+  id: string;
+  title: string;
+  summary: string;
+  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  symbol: string;
+  timeAgo: string;
+  impactExplanation?: string;
+  sources?: GroundingSource[];
+}
+
 export interface AIAnalysisRequest {
   symbol: string;
   currentPrice: number;
@@ -152,4 +180,15 @@ export interface AIAnalysisResponse {
   riskLevel: RiskLevel;
   keyDrivers: string[];
   patternDetected: string;
+}
+
+export interface TelegramSettings {
+  botToken: string;
+  chatId: string;
+  enabled: boolean;
+  notifyOnSignals: boolean;
+  notifyOnOrders: boolean;
+  notifyOnStopLoss: boolean;
+  notifyOnEmergency: boolean;
+  notifyDailyReport: boolean;
 }

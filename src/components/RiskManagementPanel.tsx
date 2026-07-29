@@ -155,6 +155,27 @@ export const RiskManagementPanel: React.FC<RiskManagementPanelProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Max Open Positions */}
+              <div className="md:col-span-2 pt-2 border-t border-white/5 flex items-center justify-between">
+                <div>
+                  <label className="block text-neutral-300 font-semibold mb-0.5">Лимит активных позиций (Max Open Positions):</label>
+                  <p className="text-[11px] text-neutral-500">Ограничение на количество одновременных сделок AI и трейдера.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={formRisk.maxOpenPositions || 3}
+                    onChange={(e) => setFormRisk({ ...formRisk, maxOpenPositions: parseInt(e.target.value) })}
+                    className="glass-input rounded-xl p-2 text-white font-mono font-bold w-24 focus:border-green-500 focus:outline-none"
+                  >
+                    {[1, 2, 3, 4, 5, 8, 10].map((num) => (
+                      <option key={num} value={num} className="bg-neutral-900 text-white">
+                        {num} поз.
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
 

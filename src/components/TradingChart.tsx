@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -18,7 +18,9 @@ interface TradingChartProps {
   selectedSymbol: string;
   onSelectSymbol: (symbol: string) => void;
   onScanAI: () => void;
+  onOpenAIDecision?: (asset: CryptoAsset) => void;
   isScanning: boolean;
+  isTestnet?: boolean;
 }
 
 export const TradingChart: React.FC<TradingChartProps> = ({
@@ -26,16 +28,77 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   selectedSymbol,
   onSelectSymbol,
   onScanAI,
+  onOpenAIDecision,
   isScanning,
+  isTestnet = true,
 }) => {
   const [timeframe, setTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h'>('15m');
   const [showRsi, setShowRsi] = useState(true);
   const [showMacd, setShowMacd] = useState(true);
+  const [realCandles, setRealCandles] = useState<Candlestick[]>([]);
+  const [loadingKlines, setLoadingKlines] = useState(false);
 
   const currentAsset = assets.find((a) => a.symbol === selectedSymbol) || assets[0];
 
-  // Generate responsive candle & indicator history based on asset price & volatility
+  // Fetch real candles from Binance API when symbol or timeframe changes
+  useEffect(() => {
+    let isMounted = true;
+    const fetchKlines = async () => {
+      if (!selectedSymbol) return;
+      const cleanSymbol = selectedSymbol.replace('/', '').toUpperCase();
+      setLoadingKlines(true);
+
+      try {
+        const res = await fetch(`/api/binance/klines?symbol=${cleanSymbol}&interval=${timeframe}&limit=40&testnet=${isTestnet}`);
+        if (!res.ok) throw new Error('Failed to fetch klines');
+        const data = await res.json();
+
+        if (data.success && Array.isArray(data.candles) && isMounted) {
+          const candles: Candlestick[] = data.candles.map((c: any, i: number) => {
+            const d = new Date(c.openTime);
+            const timeLabel = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            const rsiVal = data.indicators?.rsi || 50;
+            const isLast = i === data.candles.length - 1;
+
+            let signal: 'BUY' | 'SELL' | null = null;
+            if (i === data.candles.length - 3 && rsiVal < 38) signal = 'BUY';
+            if (i === data.candles.length - 8 && rsiVal > 68) signal = 'SELL';
+
+            return {
+              timestamp: d.toISOString(),
+              timeLabel,
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: Math.round(c.volume),
+              rsi: rsiVal,
+              macd: data.indicators?.ema20 ? Number((c.close - data.indicators.ema20).toFixed(2)) : 0,
+              signal,
+            };
+          });
+
+          setRealCandles(candles);
+        }
+      } catch (err) {
+        console.warn('Binance live klines fetch fallback:', err);
+      } finally {
+        if (isMounted) setLoadingKlines(false);
+      }
+    };
+
+    fetchKlines();
+    const timer = setInterval(fetchKlines, 10000); // refresh every 10s
+
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
+  }, [selectedSymbol, timeframe, isTestnet]);
+
+  // Fallback synthetic candles if real ones not available yet
   const chartData = useMemo(() => {
+    if (realCandles.length > 0) return realCandles;
     if (!currentAsset) return [];
     const basePrice = currentAsset.price;
     const count = 30;
@@ -45,18 +108,17 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
     for (let i = 0; i < count; i++) {
       const isLast = i === count - 1;
-      const changePct = (Math.sin(i * 0.7) * 0.012) + ((Math.random() - 0.48) * 0.008);
+      // Deterministic pseudo-wave so array items don't jitter randomly on every render
+      const changePct = (Math.sin(i * 0.7) * 0.012) + (Math.cos(i * 1.3) * 0.004);
       const open = curClose;
       const close = isLast ? currentAsset.price : open * (1 + changePct);
-      const high = Math.max(open, close) * (1 + Math.random() * 0.004);
-      const low = Math.min(open, close) * (1 - Math.random() * 0.004);
-      const volume = Math.round(100000 + Math.random() * 500000);
+      const high = Math.max(open, close) * (1 + Math.abs(Math.sin(i * 0.9)) * 0.003);
+      const low = Math.min(open, close) * (1 - Math.abs(Math.cos(i * 0.8)) * 0.003);
+      const volume = Math.round(100000 + Math.abs(Math.sin(i * 2.1)) * 400000);
 
-      // RSI approximation
       const rsiVal = Number((50 + Math.sin(i * 0.5) * 20 + (currentAsset.change24h * 2)).toFixed(1));
       const macdVal = Number((Math.sin(i * 0.4) * (basePrice * 0.003)).toFixed(2));
 
-      // AI Signals simulation on specific candles
       let signal: 'BUY' | 'SELL' | null = null;
       if (i === count - 6 && rsiVal < 42) signal = 'BUY';
       if (i === count - 18 && rsiVal > 68) signal = 'SELL';
@@ -82,7 +144,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     }
 
     return items;
-  }, [currentAsset, timeframe]);
+  }, [currentAsset?.symbol, currentAsset?.price, timeframe, realCandles]);
 
   const isPositive = (currentAsset?.change24h || 0) >= 0;
 
@@ -129,6 +191,17 @@ export const TradingChart: React.FC<TradingChartProps> = ({
               </button>
             ))}
           </div>
+
+          {onOpenAIDecision && (
+            <button
+              onClick={() => onOpenAIDecision(currentAsset)}
+              className="px-3.5 py-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 font-bold rounded-xl text-xs shadow-md shadow-cyan-500/10 transition flex items-center gap-1.5"
+              title="Открыть глубокую аналитику AI Decision Engine"
+            >
+              <Activity className="w-3.5 h-3.5 text-cyan-400" />
+              <span>AI Decision Engine</span>
+            </button>
+          )}
 
           <button
             onClick={onScanAI}
@@ -205,7 +278,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
             />
 
             {/* Volume bars */}
-            <Bar dataKey="volume" yAxisId="price" fill="#262626" opacity={0.6} barSize={6} />
+            <Bar dataKey="volume" yAxisId="price" fill="#262626" opacity={0.6} barSize={6} isAnimationActive={false} />
 
             {/* Price Line */}
             <Line
@@ -214,6 +287,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
               yAxisId="price"
               stroke={isPositive ? '#22c55e' : '#ef4444'}
               strokeWidth={2.5}
+              isAnimationActive={false}
               dot={(props: any) => {
                 const { cx, cy, payload } = props;
                 if (payload?.signal === 'BUY') {
