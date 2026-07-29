@@ -26,12 +26,16 @@ interface LandingPageProps {
   onOpenAuth: (mode: 'login' | 'register') => void;
   onOpenDemoDashboard: () => void;
   assets: CryptoAsset[];
+  onOpenLegalDoc?: (doc: 'privacy' | 'cookies' | 'terms' | 'risk-disclaimer' | 'security') => void;
+  onOpenCookiePreferences?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenAuth,
   onOpenDemoDashboard,
   assets,
+  onOpenLegalDoc,
+  onOpenCookiePreferences,
 }) => {
   const [selectedDemoSymbol, setSelectedDemoSymbol] = useState<string>('BTC/USDT');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
@@ -611,11 +615,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-6 2xl:gap-10 text-[11px] 2xl:text-xs">
-            <a href="#security" className="hover:text-neutral-300">Политика безопасности</a>
-            <a href="#faq" className="hover:text-neutral-300">Условия использования</a>
-            <a href="#beta" className="hover:text-neutral-300">Beta Документация</a>
-            <span className="font-mono text-green-500/80">Binance Read-Only API Standard</span>
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6 2xl:gap-8 text-[11px] 2xl:text-xs">
+            <button onClick={() => onOpenLegalDoc?.('privacy')} className="hover:text-green-400 transition-colors">
+              Privacy Policy
+            </button>
+            <button onClick={() => onOpenLegalDoc?.('cookies')} className="hover:text-green-400 transition-colors">
+              Cookie Policy
+            </button>
+            <button onClick={() => onOpenLegalDoc?.('terms')} className="hover:text-green-400 transition-colors">
+              Terms of Service
+            </button>
+            <button onClick={() => onOpenLegalDoc?.('risk-disclaimer')} className="hover:text-amber-400 transition-colors font-semibold">
+              Risk Disclaimer
+            </button>
+            <button onClick={() => onOpenLegalDoc?.('security')} className="hover:text-cyan-400 transition-colors">
+              Security
+            </button>
+            <button onClick={onOpenCookiePreferences} className="hover:text-neutral-200 transition-colors underline">
+              Настройки cookies
+            </button>
+            <a href="mailto:support@synapseai.app" className="hover:text-neutral-200 transition-colors">
+              Contact
+            </a>
+            <span className="font-mono text-green-500/80 hidden lg:inline">Binance Read-Only Standard</span>
           </div>
         </div>
       </footer>

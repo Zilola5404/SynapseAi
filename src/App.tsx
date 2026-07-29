@@ -39,17 +39,26 @@ import { UserOnboardingModal } from './components/UserOnboardingModal';
 import { AIDecisionModal } from './components/AIDecisionModal';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
+import { UserProfileModal } from './components/UserProfileModal';
+import { CookieBanner } from './components/CookieBanner';
+import { CookiePreferencesModal } from './components/CookiePreferencesModal';
+import { LegalDocsModal, LegalDocType } from './components/LegalDocsModal';
+import { getCurrentSessionUser, clearCurrentSessionUser } from './lib/userService';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'landing' | 'dashboard'>('landing');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [profileTab, setProfileTab] = useState<'profile' | 'settings' | 'billing' | 'emails'>('profile');
+
+  // Legal & Cookie management state
+  const [isCookiePrefsOpen, setIsCookiePrefsOpen] = useState<boolean>(false);
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState<boolean>(false);
+  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocType>('privacy');
+
   const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(() => {
-    try {
-      const saved = localStorage.getItem('synapse_user');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return null;
+    return getCurrentSessionUser();
   });
 
   const [assets, setAssets] = useState<CryptoAsset[]>(INITIAL_ASSETS);
@@ -737,25 +746,72 @@ export default function App() {
     );
   };
 
+  const handleOpenAuth = (mode: 'login' | 'register') => {
+    if (currentUser) {
+      setCurrentView('dashboard');
+    } else {
+      setAuthMode(mode);
+      setIsAuthModalOpen(true);
+    }
+  };
+
+  const handleLogout = () => {
+    clearCurrentSessionUser();
+    setCurrentUser(null);
+    setCurrentView('landing');
+    setIsProfileModalOpen(false);
+  };
+
+  const handleOpenProfileTab = (tab: 'profile' | 'settings' | 'billing' | 'emails') => {
+    setProfileTab(tab);
+    setIsProfileModalOpen(true);
+  };
+
+  const handleOpenLegalDoc = (doc: LegalDocType) => {
+    setActiveLegalDoc(doc);
+    setIsLegalModalOpen(true);
+  };
+
   if (currentView === 'landing') {
     return (
       <>
         <LandingPage
-          onOpenAuth={(mode) => {
-            setAuthMode(mode);
-            setIsAuthModalOpen(true);
-          }}
+          onOpenAuth={handleOpenAuth}
           onOpenDemoDashboard={() => setCurrentView('dashboard')}
           assets={assets}
+          onOpenLegalDoc={handleOpenLegalDoc}
+          onOpenCookiePreferences={() => setIsCookiePrefsOpen(true)}
         />
         <AuthModal
           isOpen={isAuthModalOpen}
           onClose={() => setIsAuthModalOpen(false)}
           initialMode={authMode}
+          onOpenLegalDoc={handleOpenLegalDoc}
           onSuccess={(userData) => {
             setCurrentUser(userData);
             setCurrentView('dashboard');
+            if (authMode === 'register') {
+              setIsOnboardingOpen(true);
+            }
           }}
+        />
+
+        <CookieBanner
+          onOpenPreferences={() => setIsCookiePrefsOpen(true)}
+          onOpenLegalDoc={handleOpenLegalDoc}
+        />
+
+        <CookiePreferencesModal
+          isOpen={isCookiePrefsOpen}
+          onClose={() => setIsCookiePrefsOpen(false)}
+          onOpenLegalDoc={handleOpenLegalDoc}
+        />
+
+        <LegalDocsModal
+          isOpen={isLegalModalOpen}
+          onClose={() => setIsLegalModalOpen(false)}
+          initialDoc={activeLegalDoc}
+          onOpenCookiePreferences={() => setIsCookiePrefsOpen(true)}
         />
       </>
     );
@@ -785,6 +841,9 @@ export default function App() {
         onOpenBinanceSettings={() => setIsBinanceModalOpen(true)}
         onOpenTelegramSettings={() => setIsTelegramModalOpen(true)}
         onOpenOnboarding={() => setIsOnboardingOpen(true)}
+        onOpenProfileTab={handleOpenProfileTab}
+        onOpenAuth={handleOpenAuth}
+        onLogout={handleLogout}
         isScanning={isScanning}
         isPaperTrading={!binanceConfig.apiKey || binanceConfig.isTestnet}
       />
@@ -937,10 +996,36 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         initialMode={authMode}
+        onOpenLegalDoc={handleOpenLegalDoc}
         onSuccess={(userData) => {
           setCurrentUser(userData);
           setCurrentView('dashboard');
         }}
+      />
+
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        onLogout={handleLogout}
+        initialTab={profileTab}
+      />
+
+      <CookieBanner
+        onOpenPreferences={() => setIsCookiePrefsOpen(true)}
+        onOpenLegalDoc={handleOpenLegalDoc}
+      />
+
+      <CookiePreferencesModal
+        isOpen={isCookiePrefsOpen}
+        onClose={() => setIsCookiePrefsOpen(false)}
+        onOpenLegalDoc={handleOpenLegalDoc}
+      />
+
+      <LegalDocsModal
+        isOpen={isLegalModalOpen}
+        onClose={() => setIsLegalModalOpen(false)}
+        initialDoc={activeLegalDoc}
+        onOpenCookiePreferences={() => setIsCookiePrefsOpen(true)}
       />
     </div>
   );

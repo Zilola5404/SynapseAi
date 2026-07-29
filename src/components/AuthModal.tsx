@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User, ArrowRight, ShieldCheck, CheckCircle2, KeyRound, Sparkles } from 'lucide-react';
+import { registerNewUser, loginUser, resetUserPasswordRequest } from '../lib/userService';
+import { sendEmailNotification } from '../lib/emailService';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (userData: { email: string; name: string }) => void;
   initialMode?: 'login' | 'register';
+  onOpenLegalDoc?: (doc: 'terms' | 'privacy') => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -13,12 +16,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   onSuccess,
   initialMode = 'register',
+  onOpenLegalDoc,
 }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [promoCode, setPromoCode] = useState('BETA-PRO-14DAYS');
+  const [agreedToTerms, setAgreedToTerms] = useState(true);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetSent, setResetSent] = useState(false);
@@ -34,14 +40,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    if (mode !== 'forgot' && (!password || password.length < 6)) {
-      setError('Пароль должен содержать минимум 6 символов');
-      return;
-    }
-
-    if (mode === 'register' && !name) {
-      setError('Укажите ваше имя');
-      return;
+    if (mode === 'register') {
+      if (!agreedToTerms) {
+        setError('Вы должны принять Условия использования и Политику конфиденциальности');
+        return;
+      }
+      if (!name.trim()) {
+        setError('Укажите ваше имя или никнейм');
+        return;
+      }
+      if (!password || password.length < 6) {
+        setError('Пароль должен содержать минимум 6 символов');
+        return;
+      }
+      if (confirmPassword && password !== confirmPassword) {
+        setError('Пароли не совпадают');
+        return;
+      }
+    } else if (mode === 'login') {
+      if (!password) {
+        setError('Введите пароль');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -50,30 +70,53 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setIsSubmitting(false);
 
       if (mode === 'forgot') {
+        resetUserPasswordRequest(email);
         setResetSent(true);
         return;
       }
 
-      const userName = name || email.split('@')[0];
-      const userData = { email, name: userName };
-      localStorage.setItem('synapse_user', JSON.stringify(userData));
-      onSuccess(userData);
-      onClose();
-    }, 600);
+      if (mode === 'register') {
+        const result = registerNewUser(email, password, name);
+        if (!result.success) {
+          setError(result.error || 'Ошибка при регистрации');
+          return;
+        }
+        onSuccess({ email: result.user!.email, name: result.user!.name });
+        onClose();
+      } else if (mode === 'login') {
+        const result = loginUser(email, password);
+        if (!result.success) {
+          setError(result.error || 'Неверный логин или пароль');
+          return;
+        }
+        onSuccess({ email: result.user!.email, name: result.user!.name });
+        onClose();
+      }
+    }, 500);
   };
 
   const handleOAuthLogin = (provider: 'Google' | 'Telegram') => {
     setIsSubmitting(true);
     setTimeout(() => {
       setIsSubmitting(false);
-      const userData = {
-        email: provider === 'Google' ? 'user.demo@gmail.com' : 'telegram_trader@t.me',
-        name: provider === 'Google' ? 'Александр М.' : 'Telegram Trader',
-      };
-      localStorage.setItem('synapse_user', JSON.stringify(userData));
-      onSuccess(userData);
+      const oAuthEmail = provider === 'Google' ? 'user.demo@gmail.com' : 'telegram_trader@t.me';
+      const oAuthName = provider === 'Google' ? 'Александр М.' : 'Telegram Trader';
+
+      const result = registerNewUser(oAuthEmail, 'oauth_secure_pass', oAuthName);
+      if (!result.success) {
+        // If already exists, log in
+        const loginRes = loginUser(oAuthEmail, 'oauth_secure_pass');
+        if (loginRes.user) {
+          onSuccess({ email: loginRes.user.email, name: loginRes.user.name });
+        } else {
+          onSuccess({ email: oAuthEmail, name: oAuthName });
+        }
+      } else if (result.user) {
+        onSuccess({ email: result.user.email, name: result.user.name });
+      }
+
       onClose();
-    }, 700);
+    }, 600);
   };
 
   return (
@@ -87,6 +130,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-2 text-neutral-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+          title="Закрыть"
         >
           <X className="w-5 h-5" />
         </button>
@@ -102,8 +146,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {mode === 'forgot' && 'Восстановление доступа'}
           </h3>
           <p className="text-xs text-neutral-400 mt-1">
-            {mode === 'login' && 'Введите свои данные для доступа к личной аналитике'}
-            {mode === 'register' && '14 дней бесплатного доступа к Pro-моделям аналитики'}
+            {mode === 'login' && 'Введите ваши учётные данные для доступа к кабинету'}
+            {mode === 'register' && '14 дней бесплатного доступа Pro Analyst с отправкой уведомлений'}
             {mode === 'forgot' && 'Мы отправим инструкции по сбросу пароля на вашу почту'}
           </p>
         </div>
@@ -166,7 +210,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <p className="text-sm text-neutral-300">
-              Письмо с дальнейшими инструкциями отправлено на адрес <span className="text-green-400 font-mono">{email}</span>.
+              Письмо с инструкциями по сбросу отправлено на <span className="text-green-400 font-mono">{email}</span>. Проверьте почтовый ящик.
             </p>
             <button
               onClick={() => { setResetSent(false); setMode('login'); }}
@@ -242,6 +286,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             {mode === 'register' && (
               <div>
+                <label className="block text-xs font-semibold text-neutral-400 mb-1">Подтвердите пароль</label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-3 w-4 h-4 text-neutral-500" />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-green-500/60 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
+
+            {mode === 'register' && (
+              <div>
                 <label className="block text-xs font-semibold text-neutral-400 mb-1">
                   Промокод доступа (активирован)
                 </label>
@@ -257,13 +317,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             )}
 
+            {mode === 'register' && (
+              <div className="flex items-start gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="agree-terms"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-green-500 rounded cursor-pointer"
+                />
+                <label htmlFor="agree-terms" className="text-xs text-neutral-300 leading-snug cursor-pointer">
+                  Я принимаю{' '}
+                  <button
+                    type="button"
+                    onClick={() => onOpenLegalDoc?.('terms')}
+                    className="text-green-400 font-semibold underline hover:text-green-300"
+                  >
+                    Terms of Service
+                  </button>{' '}
+                  и{' '}
+                  <button
+                    type="button"
+                    onClick={() => onOpenLegalDoc?.('privacy')}
+                    className="text-green-400 font-semibold underline hover:text-green-300"
+                  >
+                    Privacy Policy
+                  </button>
+                  .
+                </label>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={isSubmitting}
               className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black font-extrabold rounded-xl transition-all shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 text-sm disabled:opacity-50 mt-2"
             >
               {isSubmitting ? (
-                <span className="animate-pulse">Подключение к Synapse...</span>
+                <span className="animate-pulse">Авторизация в системе Synapse...</span>
               ) : (
                 <>
                   {mode === 'login' && 'Войти в личный кабинет'}
