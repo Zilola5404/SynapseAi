@@ -43,6 +43,8 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { CookieBanner } from './components/CookieBanner';
 import { CookiePreferencesModal } from './components/CookiePreferencesModal';
 import { LegalDocsModal, LegalDocType } from './components/LegalDocsModal';
+import { AIStatusBanner } from './components/AIStatusBanner';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { getCurrentSessionUser, clearCurrentSessionUser } from './lib/userService';
 
 export default function App() {
@@ -818,7 +820,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-cyan-500 selection:text-slate-950">
+    <div className="min-h-screen bg-[#05070d] text-slate-100 font-sans antialiased selection:bg-cyan-500 selection:text-slate-950">
+      {/* Institutional AI Status Live Ticker Banner */}
+      <AIStatusBanner />
+
       {/* Top Fixed Header */}
       <Header
         strategy={strategy}
@@ -849,7 +854,7 @@ export default function App() {
       />
 
       {/* Main Container */}
-      <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6">
+      <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 pb-24 md:pb-6">
         {/* Stage 3 Emergency Safeguard Alert Banner */}
         <EmergencyRiskBanner
           risk={risk}
@@ -1026,6 +1031,22 @@ export default function App() {
         onClose={() => setIsLegalModalOpen(false)}
         initialDoc={activeLegalDoc}
         onOpenCookiePreferences={() => setIsCookiePrefsOpen(true)}
+      />
+
+      <MobileBottomNav
+        currentView={currentView}
+        onNavigateHome={() => setCurrentView('landing')}
+        onNavigateDashboard={() => setCurrentView('dashboard')}
+        onOpenAIProfile={() => setIsOnboardingOpen(true)}
+        onOpenManualTrade={() => setIsManualTradeOpen(true)}
+        onOpenProfile={() => {
+          if (currentUser) {
+            handleOpenProfileTab('profile');
+          } else {
+            handleOpenAuth('login');
+          }
+        }}
+        isScanning={isScanning}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 {
-  "name": "Smart Crypto AI Trader",
-  "description": "Автономный крипто-трейдер с AI-аналитикой рынка, автоматическим управлением рисками и интерактивным контролем стратегий.",
+  "name": "Synapse AI Crypto Intelligence",
+  "description": "Премиальная AI-платформа управления криптоактивами институционального уровня с 3D-визуализацией нейронной сети, онлайн-сканированием рисков и гибридным торговым терминалом.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
