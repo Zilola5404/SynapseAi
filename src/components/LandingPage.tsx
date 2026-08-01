@@ -236,8 +236,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 2xl:gap-8">
-            <div className="bg-[#12151c] border border-white/10 rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 hover:border-green-500/40 transition-all space-y-4">
-              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-green-500/10 text-green-400 flex items-center justify-center font-bold">
+            <div className="glass-card-3d rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 space-y-4">
+              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold border border-cyan-500/20">
                 <Lock className="w-5 h-5 2xl:w-7 2xl:h-7" />
               </div>
               <h3 className="text-base 2xl:text-xl font-extrabold text-white">No Withdrawal API</h3>
@@ -246,8 +246,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </p>
             </div>
 
-            <div className="bg-[#12151c] border border-white/10 rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 hover:border-green-500/40 transition-all space-y-4">
-              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold">
+            <div className="glass-card-3d rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 space-y-4">
+              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold border border-emerald-500/20">
                 <Eye className="w-5 h-5 2xl:w-7 2xl:h-7" />
               </div>
               <h3 className="text-base 2xl:text-xl font-extrabold text-white">Read-Only First</h3>
@@ -256,8 +256,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </p>
             </div>
 
-            <div className="bg-[#12151c] border border-white/10 rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 hover:border-green-500/40 transition-all space-y-4">
-              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-teal-500/10 text-teal-400 flex items-center justify-center font-bold">
+            <div className="glass-card-3d rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 space-y-4">
+              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-teal-500/10 text-teal-400 flex items-center justify-center font-bold border border-teal-500/20">
                 <Key className="w-5 h-5 2xl:w-7 2xl:h-7" />
               </div>
               <h3 className="text-base 2xl:text-xl font-extrabold text-white">AES-256 Encryption</h3>
@@ -266,8 +266,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </p>
             </div>
 
-            <div className="bg-[#12151c] border border-white/10 rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 hover:border-green-500/40 transition-all space-y-4">
-              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold">
+            <div className="glass-card-3d rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 space-y-4">
+              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold border border-sky-500/20">
                 <Server className="w-5 h-5 2xl:w-7 2xl:h-7" />
               </div>
               <h3 className="text-base 2xl:text-xl font-extrabold text-white">Funds Stay on Binance</h3>

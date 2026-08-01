@@ -57,7 +57,7 @@ export const ActivePositions: React.FC<ActivePositionsProps> = ({
             return (
               <div
                 key={pos.id}
-                className="bg-black/60 border border-white/10 rounded-xl p-4 transition hover:border-white/20 relative overflow-hidden shadow-lg"
+                className="glass-card-3d rounded-xl p-4 transition relative overflow-hidden shadow-lg"
               >
                 {/* Side Bar accent */}
                 <div className={`absolute top-0 left-0 bottom-0 w-1 ${isLong ? 'bg-green-500' : 'bg-red-500'}`} />

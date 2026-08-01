@@ -149,7 +149,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const isPositive = (currentAsset?.change24h || 0) >= 0;
 
   return (
-    <div className="glass-card rounded-2xl p-5 shadow-2xl mb-6">
+    <div className="glass-card-3d rounded-2xl p-5 shadow-2xl mb-6">
       {/* Top Asset Selector & Timeframe Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3 mb-4">
         {/* Asset Switcher Pills */}
