@@ -5,7 +5,7 @@ import { logger } from "../logger.js";
 let agent: ProxyAgent | null = null;
 
 function proxyUrl(): string {
-  return (config.telegramProxy || process.env.HTTPS_PROXY || process.env.https_proxy || "").trim();
+  return config.telegramProxy.trim();
 }
 
 export function telegramApiRoot(): string {
@@ -19,7 +19,7 @@ export function telegramFetch(input: RequestInfo | URL, init?: RequestInit): Pro
   }
   if (!agent) {
     agent = new ProxyAgent(proxy);
-    logger.info("Telegram API идёт через прокси");
+    logger.info({ proxy }, "Telegram API via proxy");
   }
   return undiciFetch(input as string, { ...(init as object), dispatcher: agent }) as unknown as Promise<Response>;
 }
@@ -32,10 +32,11 @@ export async function probeTelegramApi(timeoutMs = 8000): Promise<{ ok: boolean;
     });
     return { ok: res.ok || res.status === 404, ms: Date.now() - started };
   } catch (err) {
+    const cause = err instanceof Error && "cause" in err ? (err.cause as { code?: string; message?: string }) : undefined;
     return {
       ok: false,
       ms: Date.now() - started,
-      error: err instanceof Error ? err.message : String(err),
+      error: [err instanceof Error ? err.message : String(err), cause?.code, cause?.message].filter(Boolean).join(" "),
     };
   }
 }

@@ -8,8 +8,6 @@ import {
   fetchBinanceOrderBook,
   fetchBinanceAccountBalance,
   testBinanceApiConnection,
-  placeBinanceOrder,
-  cancelBinanceOrder,
   fetchBinanceOpenOrders,
 } from "./server/binance.js";
 import { binanceWsManager } from "./server/websocket.js";
@@ -20,7 +18,8 @@ import { logger } from "./server/logger.js";
 import { authRouter } from "./server/routes/auth.js";
 import { credentialsRouter } from "./server/routes/credentials.js";
 import { tradingRouter } from "./server/routes/trading.js";
-import { startTelegramBot } from "./server/telegram/bot.js";
+import { bootLog } from "./server/bootLog.js";
+import { startTelegramBot, stopTelegramBot } from "./server/telegram/bot.js";
 import { startTradingEngine, stopTradingEngine } from "./server/services/tradingEngine.js";
 import { runHistoricalBacktest } from "./server/trading/backtest/BacktestEngine.js";
 import { healthRouter } from "./server/routes/health.js";
@@ -148,97 +147,21 @@ app.get("/api/binance/stream", (req, res) => {
 // ================= STAGE 2: ORDER EXECUTION ENGINE API ROUTES ================= //
 
 // 6. Place New Order (Limit or Market, Spot or Futures)
-app.post("/api/binance/order", async (req, res) => {
-  try {
-    const {
-      symbol,
-      side,
-      type = "MARKET",
-      quantity,
-      price,
-      isFutures = false,
-      isTestnet = true,
-      apiKey = process.env.BINANCE_API_KEY || "",
-      apiSecret = process.env.BINANCE_API_SECRET || "",
-    } = req.body;
-
-    if (!symbol || !side || !quantity) {
-      return res.status(400).json({ success: false, message: "Параметры symbol, side и quantity обязательны" });
-    }
-
-    const riskGuard = validateOrderRisk({
-      symbol,
-      side,
-      marginUsdt: parseFloat(req.body.marginUsdt || quantity),
-      leverage: parseInt(req.body.leverage || "1", 10),
-      accountEquity: parseFloat(req.body.accountEquity || "10000"),
-      activePositionsCount: parseInt(req.body.activePositionsCount || "0", 10),
-      realizedPnL24h: parseFloat(req.body.realizedPnL24h || "0"),
-      peakEquityUsdt: req.body.peakEquityUsdt,
-      currentEquityUsdt: req.body.accountEquity,
-      riskSettings: {
-        maxDailyLossPct: 5,
-        maxDrawdownPct: 8,
-        maxPositionSizePct: 10,
-        maxLeverage: 10,
-        maxOpenPositions: 3,
-        enableTrailingStop: true,
-        trailingStopPct: 1.5,
-        emergencyKillSwitch: false,
-        ...(req.body.riskSettings || {}),
-      },
-    });
-    if (!riskGuard.allowed) {
-      return res.status(403).json({ success: false, message: riskGuard.reason, validation: riskGuard });
-    }
-
-    const orderResult = await placeBinanceOrder({
-      symbol,
-      side,
-      type,
-      quantity: parseFloat(quantity),
-      price: price ? parseFloat(price) : undefined,
-      isFutures,
-      isTestnet,
-      apiKey: apiKey.trim(),
-      apiSecret: apiSecret.trim(),
-    });
-
-    res.json({ success: true, order: orderResult });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || "Ошибка размещения ордера на Binance" });
-  }
+app.post("/api/binance/order", (_req, res) => {
+  res.status(410).json({
+    success: false,
+    deprecated: true,
+    message: "Direct Binance orders are disabled. Use Telegram /scan or TradingOrchestrator (Risk Engine required).",
+  });
 });
 
-// 7. Cancel Active Order
-app.post("/api/binance/cancel-order", async (req, res) => {
-  try {
-    const {
-      symbol,
-      orderId,
-      isTestnet = true,
-      isFutures = false,
-      apiKey = process.env.BINANCE_API_KEY || "",
-      apiSecret = process.env.BINANCE_API_SECRET || "",
-    } = req.body;
-
-    if (!symbol || !orderId) {
-      return res.status(400).json({ success: false, message: "Необходимы symbol и orderId" });
-    }
-
-    const result = await cancelBinanceOrder(
-      symbol,
-      orderId,
-      apiKey.trim(),
-      apiSecret.trim(),
-      isTestnet,
-      isFutures
-    );
-
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || "Ошибка отмены ордера" });
-  }
+// 7. Cancel Active Order — disabled: use TradingOrchestrator
+app.post("/api/binance/cancel-order", (_req, res) => {
+  res.status(410).json({
+    success: false,
+    deprecated: true,
+    message: "Direct Binance cancel is disabled. Use Telegram /panic or TradingOrchestrator.",
+  });
 });
 
 // 8. Fetch Active Open Orders
@@ -306,42 +229,13 @@ app.post("/api/binance/risk-check", (req, res) => {
   }
 });
 
-// 10. Emergency Kill Switch Trigger
-app.post("/api/binance/kill-switch", async (req, res) => {
-  try {
-    const {
-      symbol = "BTCUSDT",
-      apiKey = process.env.BINANCE_API_KEY || "",
-      apiSecret = process.env.BINANCE_API_SECRET || "",
-      isTestnet = true,
-      isFutures = false,
-    } = req.body;
-
-    // Log emergency kill switch trigger
-    console.warn(`[KILL SWITCH ACTIVATED] Emergency liquidation and order cancellation triggered for ${symbol}`);
-
-    let canceledCount = 0;
-    if (apiKey && apiSecret && apiKey.trim().length > 10) {
-      try {
-        const openOrders = await fetchBinanceOpenOrders(symbol, apiKey, apiSecret, isTestnet, isFutures);
-        for (const order of openOrders) {
-          await cancelBinanceOrder(symbol, order.orderId, apiKey, apiSecret, isTestnet, isFutures);
-          canceledCount++;
-        }
-      } catch (err: any) {
-        console.warn('Kill switch online order cancellation warning:', err.message);
-      }
-    }
-
-    res.json({
-      success: true,
-      message: "Аварийная кнопка (KILL SWITCH) активирована! Торговля заблокирована, открытые ордера отменены.",
-      canceledCount,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || "Failed to trigger kill switch" });
-  }
+// 10. Emergency Kill Switch — TradingOrchestrator only
+app.post("/api/binance/kill-switch", (_req, res) => {
+  res.status(410).json({
+    success: false,
+    deprecated: true,
+    message: "Use Telegram /panic or POST /api/v1/trading/kill-switch (JWT). Direct Binance kill-switch is disabled.",
+  });
 });
 
 // ================= STAGE 5: SYSTEM HEALTH & SERVER BACKTEST ENGINE ================= //
@@ -978,25 +872,37 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    logger.info(`SynapseAi backend http://0.0.0.0:${PORT}`);
+  const httpServer = app.listen(PORT, "0.0.0.0", () => {
+    bootLog(`[HTTP] server started http://0.0.0.0:${PORT}`);
+  });
+  httpServer.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      bootLog("[HTTP:FATAL] Port 3000 already in use. Stop the other npm run dev.");
+      process.exit(1);
+    }
+    throw err;
   });
 }
 
 async function boot() {
+  bootLog("[BOOT] SynapseAI starting");
+  bootLog("[DB] Connecting PostgreSQL...");
   const dbOk = await connectDb();
   if (!dbOk) {
-    logger.error("PostgreSQL недоступна. Запустите: npm run db:up && npm run db:migrate");
+    bootLog("[DB:FATAL] PostgreSQL unavailable. Run: npm run db:up && npm run db:migrate");
   } else {
+    bootLog("[DB] PostgreSQL connected");
     startTradingEngine();
+    bootLog("[WORKERS] started");
   }
-  logger.info("Запуск HTTP-сервера (Vite в dev может занять несколько секунд)...");
+  bootLog("[HTTP] starting (Vite may take a few seconds in dev)...");
   void startTelegramBot().catch((err) => logger.error({ err }, "Telegram bot boot failed"));
   await startServer();
 }
 
 async function shutdown(signal: string) {
-  logger.info({ signal }, "Graceful shutdown");
+  bootLog(`[BOOT] shutdown ${signal}`);
+  await stopTelegramBot();
   await stopTradingEngine();
   process.exit(0);
 }

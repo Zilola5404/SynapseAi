@@ -4,18 +4,27 @@ import { tradingOrchestrator } from "../trading/orchestrator/TradingOrchestrator
 import { getDecryptedCredentials } from "./credentialService.js";
 import { startUserDataStream, stopAllUserDataStreams, userStreamCount } from "../market/userDataStream.js";
 import { refreshPrecision, precisionCacheAge, PRECISION_TTL } from "../exchanges/binance/precision.js";
+import { exchangeReconciliationWorker } from "../trading/workers/ExchangeReconciliationWorker.js";
+import { notifyUser } from "../telegram/notify.js";
+import { bootLog } from "../bootLog.js";
 
 let scanTimer: NodeJS.Timeout | null = null;
 let posTimer: NodeJS.Timeout | null = null;
 let reconTimer: NodeJS.Timeout | null = null;
 let started = false;
+let engineReady = false;
 let lastScanAt = 0;
 let lastPosAt = 0;
 let lastReconAt = 0;
 
+export function isEngineReady() {
+  return engineReady;
+}
+
 export function workerSnapshot() {
   return {
     started,
+    ready: engineReady,
     duplicateGuard: true,
     lastScanAt,
     lastPosAt,
@@ -49,18 +58,34 @@ async function attachStreams() {
   }
 }
 
+async function recover() {
+  bootLog("[RECOVERY] load modes, kill switch, positions, streams...");
+  await refreshPrecision(true).catch(() => undefined);
+  await attachStreams().catch((err) => logger.warn({ err }, "attach streams"));
+  const users = await prisma.user.findMany({
+    where: { tradingMode: { in: ["TESTNET", "LIVE"] } },
+  });
+  for (const u of users) {
+    await exchangeReconciliationWorker.runForUser(u.id).catch((err) => logger.warn({ err, userId: u.id }, "boot reconcile"));
+    await tradingOrchestrator.syncEquity(u.id).catch(() => 0);
+    if (u.accountLocked) {
+      await notifyUser(
+        u.id,
+        "⚠️ SynapseAI restarted.\nKill switch is ACTIVE.\nNew trades are blocked until /unlock."
+      ).catch(() => undefined);
+    }
+  }
+  engineReady = true;
+  bootLog("[RECOVERY] complete — scanner may open new trades");
+  await beat("recovery", "ready");
+}
+
 export function startTradingEngine() {
   if (started) {
     logger.warn("TradingEngine already started — skip duplicate workers");
     return;
   }
   started = true;
-  scanTimer = setInterval(() => {
-    lastScanAt = Date.now();
-    tradingOrchestrator.runAutoCycle()
-      .then(() => beat("trading"))
-      .catch((err) => logger.error({ err }, "TradingWorker"));
-  }, 30_000);
   posTimer = setInterval(() => {
     lastPosAt = Date.now();
     tradingOrchestrator.monitorPositions()
@@ -73,8 +98,7 @@ export function startTradingEngine() {
       if (precisionCacheAge(true) > PRECISION_TTL) await refreshPrecision(true);
       const users = await prisma.user.findMany({ where: { tradingMode: { in: ["TESTNET", "LIVE"] } } });
       for (const u of users) {
-        await tradingOrchestrator.reconcileUser(u.id);
-        await tradingOrchestrator.syncEquity(u.id).catch(() => 0);
+        await exchangeReconciliationWorker.runForUser(u.id);
       }
       await beat("reconcile", `users=${users.length}`);
     } catch (err) {
@@ -82,13 +106,24 @@ export function startTradingEngine() {
     }
   }, 120_000);
 
-  refreshPrecision(true).catch(() => undefined);
-  attachStreams().catch((err) => logger.warn({ err }, "attach streams"));
-  logger.info("Workers: scan 30s, positions 3s, reconcile 120s");
+  scanTimer = setInterval(() => {
+    if (!engineReady) return;
+    lastScanAt = Date.now();
+    tradingOrchestrator.runAutoCycle()
+      .then(() => beat("trading"))
+      .catch((err) => logger.error({ err }, "TradingWorker"));
+  }, 30_000);
+
+  void recover().catch((err) => {
+    logger.error({ err }, "recovery failed — auto trading stays blocked");
+    engineReady = false;
+  });
+  logger.info("Workers: scan 30s (after recovery), positions 3s, reconcile 120s");
 }
 
 export async function stopTradingEngine() {
   started = false;
+  engineReady = false;
   if (scanTimer) clearInterval(scanTimer);
   if (posTimer) clearInterval(posTimer);
   if (reconTimer) clearInterval(reconTimer);

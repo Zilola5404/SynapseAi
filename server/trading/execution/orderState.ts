@@ -7,6 +7,7 @@ export const ORDER_STATES = [
   "VALIDATED",
   "RISK_APPROVED",
   "SUBMITTED",
+  "ACKNOWLEDGED",
   "PARTIALLY_FILLED",
   "FILLED",
   "PROTECTION_PENDING",
@@ -24,7 +25,8 @@ const ALLOWED: Record<string, OrderState[]> = {
   NEW: ["VALIDATED", "REJECTED", "FAILED", "CANCELLED"],
   VALIDATED: ["RISK_APPROVED", "REJECTED", "FAILED"],
   RISK_APPROVED: ["SUBMITTED", "REJECTED", "FAILED"],
-  SUBMITTED: ["PARTIALLY_FILLED", "FILLED", "FAILED", "CANCELLED", "UNKNOWN"],
+  SUBMITTED: ["ACKNOWLEDGED", "PARTIALLY_FILLED", "FILLED", "FAILED", "CANCELLED", "UNKNOWN"],
+  ACKNOWLEDGED: ["PARTIALLY_FILLED", "FILLED", "FAILED", "CANCELLED", "UNKNOWN", "PROTECTED"],
   PARTIALLY_FILLED: ["FILLED", "CANCELLED", "FAILED"],
   FILLED: ["PROTECTION_PENDING", "PROTECTED", "CLOSED"],
   PROTECTION_PENDING: ["PROTECTED", "FAILED"],
@@ -92,6 +94,8 @@ export async function transitionOrder(
     avgFillPrice?: number;
     feesUsdt?: number;
     lastError?: string;
+    reason?: string;
+    exchangeResponse?: unknown;
   }
 ) {
   const current = await prisma.exchangeOrder.findUnique({ where: { id } });
@@ -100,6 +104,11 @@ export async function transitionOrder(
     logger.warn({ from: current.status, to, id }, "illegal order transition ignored");
     return current;
   }
+  const response = extra?.exchangeResponse
+    ? typeof extra.exchangeResponse === "string"
+      ? extra.exchangeResponse
+      : JSON.stringify(extra.exchangeResponse)
+    : extra?.lastError || "";
   const updated = await prisma.exchangeOrder.update({
     where: { id },
     data: {
@@ -111,12 +120,23 @@ export async function transitionOrder(
       lastError: extra?.lastError ?? current.lastError,
     },
   });
+  await prisma.orderTransition.create({
+    data: {
+      exchangeOrderId: current.id,
+      clientOrderId: current.clientOrderId,
+      symbol: current.symbol,
+      fromStatus: current.status,
+      toStatus: to,
+      reason: extra?.reason || extra?.lastError || to,
+      exchangeResponse: response.slice(0, 4000),
+    },
+  }).catch((err) => logger.warn({ err }, "order transition log failed"));
   await writeSystemLog({
     userId: current.userId,
     level: to === "FAILED" || to === "REJECTED" ? "ERROR" : "TRADE",
     pair: current.symbol,
     action: `ORDER_${to}`,
-    details: `cid=${current.clientOrderId} xid=${updated.exchangeOrderId || "-"} ${extra?.lastError || ""}`,
+    details: `cid=${current.clientOrderId} xid=${updated.exchangeOrderId || "-"} ${extra?.reason || extra?.lastError || ""}`,
   });
   return updated;
 }

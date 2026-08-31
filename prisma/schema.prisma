@@ -115,6 +115,8 @@ model ActivePosition {
   closeRequestedAt   DateTime?
   openedAt           DateTime @default(now())
   updatedAt          DateTime @updatedAt
+  entryOrderId       String?
+  closedAt           DateTime?
 
   @@unique([userId, symbol])
   @@index([userId, status])
@@ -141,9 +143,27 @@ model ExchangeOrder {
   lastError       String   @default("")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  transitions     OrderTransition[]
 
   @@index([userId, symbol, status])
   @@map("exchange_orders")
+}
+
+model OrderTransition {
+  id                String        @id @default(cuid())
+  exchangeOrderId   String
+  order             ExchangeOrder @relation(fields: [exchangeOrderId], references: [id], onDelete: Cascade)
+  clientOrderId     String
+  symbol            String
+  fromStatus        String
+  toStatus          String
+  reason            String        @default("")
+  exchangeResponse  String        @default("")
+  createdAt         DateTime      @default(now())
+
+  @@index([exchangeOrderId, createdAt])
+  @@index([clientOrderId])
+  @@map("order_transitions")
 }
 
 model CircuitBreakerState {

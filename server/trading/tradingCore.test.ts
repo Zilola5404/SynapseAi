@@ -161,6 +161,7 @@ assert.equal(
 assert.equal(canTransition("NEW", "VALIDATED"), true);
 assert.equal(canTransition("FILLED", "NEW"), false);
 assert.equal(canTransition("SUBMITTED", "FILLED"), true);
+assert.equal(canTransition("SUBMITTED", "ACKNOWLEDGED"), true);
 assert.ok(makeClientOrderId("ENTRY").length <= 36);
 
 assert.ok(roundQty("BTCUSDT", 0.0015) <= 0.0015);
@@ -181,6 +182,7 @@ assert.ok(closeFill.feesUsdt > 0);
 await withSymbolLock("u1", "BTCUSDT", async () => {
   assert.equal(isLocked("u1", "BTCUSDT"), true);
 });
+assert.equal(typeof paperExecution.placeProtection, "undefined");
 assert.equal(isLocked("u1", "BTCUSDT"), false);
 await assert.rejects(async () => {
   await withSymbolLock("u1", "ETHUSDT", async () => {

@@ -10,70 +10,162 @@ import { realizedPnl24h } from "../services/orderService.js";
 import { equityForUser } from "../trading/equity.js";
 import { saveExchangeCredentials, getDecryptedCredentials } from "../services/credentialService.js";
 import { testBinanceApiConnection } from "../binance.js";
+import { sendTelegramMessage } from "../telegram.js";
 import { runHistoricalBacktest } from "../trading/backtest/BacktestEngine.js";
 import { binanceWsManager } from "../websocket.js";
 import { probeTelegramApi, telegramApiRoot, telegramFetch } from "./transport.js";
+import { telegramDeleteWebhook, telegramGetMe, telegramGetWebhookInfo, telegramGetUpdates, isInvalidTokenError } from "./api.js";
+import { acquireTelegramLock, releaseTelegramLock } from "./instanceLock.js";
+import { bootLog } from "../bootLog.js";
+import { systemSnapshot } from "../routes/health.js";
+import { telegramRuntime } from "./runtime.js";
 import type { StrategySignal } from "../trading/types.js";
+import type { Update } from "@grammyjs/types";
+
+export { telegramRuntime };
 
 const pendingSignals = new Map<string, StrategySignal>();
 const sessions = new Map<string, { step: "api_key" | "api_secret"; apiKey?: string }>();
+
+let runningBot: Bot | null = null;
 
 function mainKeyboard() {
   return new InlineKeyboard()
     .text("▶️ Start AI", "start_ai")
     .text("📊 Market", "market_menu")
     .row()
-    .text("🔍 Scan", "scan")
+    .text("🔍 Scan Market", "scan")
     .text("💼 Positions", "positions")
     .row()
-    .text("⚙️ Risk", "risk")
-    .text("🟡 Mode", "mode_menu")
+    .text("📈 Performance", "stats")
+    .text("⚙️ Risk Settings", "risk")
     .row()
-    .text("🛑 Stop", "stop")
-    .text("🚨 Panic", "panic");
+    .text("🛑 Stop Trading", "stop")
+    .text("🚨 PANIC", "panic")
+    .row()
+    .text("🟡 Mode", "mode_menu");
+}
+
+function neverSilent(name: string, fn: (ctx: any) => Promise<void>) {
+  return async (ctx: any) => {
+    try {
+      await fn(ctx);
+    } catch (err) {
+      logger.error({ err }, name);
+      try {
+        await ctx.reply("Command error. Try /diagnostic.");
+      } catch {
+        /* ignore */
+      }
+    }
+  };
 }
 
 export async function startTelegramBot() {
   const token = config.telegramBotToken;
   if (!token) {
-    logger.warn("TELEGRAM_BOT_TOKEN не задан — Telegram-бот не запущен");
+    bootLog("[TELEGRAM:FATAL]");
+    bootLog("TELEGRAM_BOT_TOKEN is missing.");
+    bootLog("Telegram Bot was NOT started.");
+    telegramRuntime.lastError = "missing token";
+    return null;
+  }
+  bootLog("[TELEGRAM] TELEGRAM_BOT_TOKEN present: YES");
+
+  const lock = acquireTelegramLock();
+  if (!lock.ok) {
+    bootLog("[TELEGRAM:FATAL]");
+    bootLog(lock.reason || "Another SynapseAI bot instance is already running.");
+    bootLog("Stop the other process.");
+    telegramRuntime.lastError = lock.reason || "lock";
     return null;
   }
 
-  logger.info({ apiRoot: telegramApiRoot(), proxy: Boolean(config.telegramProxy) }, "Проверяем Telegram API...");
-  const probe = await probeTelegramApi(8000);
+  bootLog("[TELEGRAM] Checking Telegram API...");
+  bootLog(`[TELEGRAM] proxy: ${config.telegramProxy || "none (direct)"}`);
+  const probe = await probeTelegramApi(10000);
   if (!probe.ok) {
-    logger.error(
-      { ms: probe.ms, error: probe.error },
-      "Telegram API недоступен. /start не ответит, пока не будет VPN или TELEGRAM_PROXY (например http://127.0.0.1:7890). HTTP-сервер продолжит запуск."
-    );
+    bootLog("[TELEGRAM:FATAL]");
+    bootLog("Cannot reach Telegram API.");
+    bootLog(`URL:\n${telegramApiRoot()}`);
+    bootLog(`error: ${probe.error || "timeout"}`);
+    bootLog("Possible solutions:\n1. VPN\n2. TELEGRAM_PROXY\n3. TELEGRAM_API_ROOT");
+    telegramRuntime.lastError = probe.error || "unreachable";
+    releaseTelegramLock();
     return null;
   }
+  telegramRuntime.apiReachable = true;
+  bootLog("[TELEGRAM] API reachable");
 
-  logger.info({ ms: probe.ms }, "Telegram API доступен, подключаем бота...");
+  const me = await telegramGetMe();
+  if (!me.ok) {
+    bootLog("[TELEGRAM:FATAL]");
+    bootLog(isInvalidTokenError(me.error) ? "Telegram bot token invalid" : me.error);
+    telegramRuntime.lastError = me.error;
+    releaseTelegramLock();
+    return null;
+  }
+  telegramRuntime.username = me.username;
+  bootLog(`Telegram Bot authenticated:\n@${me.username}\nBot ID: ${me.id}`);
+
+  await telegramDeleteWebhook();
+  const hook = await telegramGetWebhookInfo();
+  if (hook.url) {
+    bootLog(`[TELEGRAM] webhook still set: ${hook.url} — polling may fail`);
+  } else {
+    bootLog("[TELEGRAM] webhook cleared, pending updates dropped");
+  }
+
+  bootLog("[TELEGRAM] Starting polling...");
   const bot = new Bot(token, {
     client: {
       apiRoot: telegramApiRoot(),
       timeoutSeconds: 20,
-      fetch: telegramFetch as never,
+      ...(config.telegramProxy ? { fetch: telegramFetch as never } : {}),
     },
   });
+  bot.botInfo = {
+    id: me.id,
+    is_bot: true,
+    first_name: me.firstName || me.username,
+    username: me.username,
+    can_join_groups: true,
+    can_read_all_group_messages: false,
+    supports_inline_queries: false,
+  };
+  runningBot = bot;
   bot.catch(async (err) => {
+    const msg = err.error instanceof Error ? err.error.message : String(err.error);
+    if (/409|terminated by other getUpdates/i.test(msg)) {
+      bootLog("[TELEGRAM:FATAL]");
+      bootLog("Another SynapseAI bot instance is already running.");
+      bootLog("Stop the other process.");
+      telegramRuntime.polling = false;
+      telegramRuntime.lastError = "409 Conflict";
+    }
     logger.error({ err: err.error }, "Telegram bot error");
     try {
-      await err.ctx?.reply("Ошибка обработки команды. Попробуйте ещё раз.");
+      await err.ctx?.reply("Command error. Try again.");
     } catch {
       /* ignore */
     }
   });
 
-  bot.command("start", async (ctx) => {
+  bot.command(
+    "start",
+    neverSilent("start", async (ctx) => {
+    logger.info(
+      {
+        telegramUserId: ctx.from?.id,
+        chatId: ctx.chat?.id,
+        username: ctx.from?.username,
+      },
+      "/start received"
+    );
+    await ctx.reply("🤖 SynapseAI is connecting...");
     try {
       const user = await requireUser(ctx);
-      if (!user) {
-        await ctx.reply("Не удалось определить аккаунт Telegram.");
-        return;
-      }
+      if (!user) return;
       const mode = user.tradingMode || "PAPER";
       const modeLine =
         mode === "LIVE" ? "🔴 <b>LIVE</b>" : mode === "TESTNET" ? "🟠 <b>TESTNET</b>" : "🟡 <b>PAPER TRADING</b>";
@@ -88,115 +180,200 @@ export async function startTelegramBot() {
     } catch (err) {
       logger.error({ err }, "/start failed");
       await ctx.reply(
-        "Бот получил /start, но не смог создать аккаунт. Обычно это PostgreSQL. Проверьте Docker и напишите /start ещё раз."
+        "⚠️ SynapseAI backend started,\nbut database is unavailable.\n\nTrading is disabled.\n\nPlease contact administrator."
       );
     }
-  });
-
-  bot.command("help", async (ctx) =>
-    ctx.reply(
-    "Команды: /start /status /market BTCUSDT /scan /positions /risk /startbot /stop /panic /unlock /mode /keys",
-      { reply_markup: mainKeyboard() }
-    )
+    })
   );
 
-  bot.command("status", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    await ctx.reply(await statusText(user), { parse_mode: "HTML", reply_markup: mainKeyboard() });
-  });
+  bot.command(
+    "diagnostic",
+    neverSilent("diagnostic", async (ctx) => {
+      let snap = { postgres: false, redis: false, binanceWs: false, workers: false };
+      try {
+        snap = await systemSnapshot();
+      } catch (err) {
+        logger.error({ err }, "diagnostic snapshot");
+      }
+      let mode = "PAPER";
+      try {
+        if (ctx.from) {
+          const user = await prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } });
+          if (user?.tradingMode) mode = user.tradingMode;
+        }
+      } catch {
+        /* DB optional for diagnostic */
+      }
+      const mark = (ok: boolean) => (ok ? "🟢" : "🔴");
+      await ctx.reply(
+        `🤖 <b>SynapseAI Diagnostic</b>\n\n` +
+          `Telegram API: ${mark(telegramRuntime.apiReachable)}\n` +
+          `Bot Polling: ${mark(telegramRuntime.polling)}\n` +
+          `Database: ${mark(snap.postgres)}\n` +
+          `Redis: ${snap.redis ? "🟢" : "⚪ optional"}\n` +
+          `Binance WS: ${mark(snap.binanceWs)}\n` +
+          `Trading Workers: ${mark(snap.workers)}\n` +
+          `Trading Mode: ${mode}`,
+        { parse_mode: "HTML" }
+      );
+    })
+  );
 
-  bot.command("market", async (ctx) => {
-    const symbol = ((ctx.match as string) || "BTCUSDT").trim().toUpperCase() || "BTCUSDT";
-    await ctx.reply(await marketText(symbol), { parse_mode: "HTML" });
-  });
+  bot.command(
+    "help",
+    neverSilent("help", async (ctx) => {
+      await ctx.reply(
+        "Commands: /start /status /market BTCUSDT /scan /positions /risk /startbot /stop /panic /unlock /mode /keys /diagnostic /performance",
+        { reply_markup: mainKeyboard() }
+      );
+    })
+  );
 
-  bot.command("scan", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    await ctx.reply("🔍 Сканирую BTC / ETH / SOL...");
-    await sendScan(ctx, user.id);
-  });
+  bot.command(
+    "status",
+    neverSilent("status", async (ctx) => {
+      const user = await requireUser(ctx);
+      if (!user) return;
+      await ctx.reply(await statusText(user), { parse_mode: "HTML", reply_markup: mainKeyboard() });
+    })
+  );
 
-  bot.command("positions", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    await sendPositions(ctx, user.id);
-  });
+  bot.command(
+    "performance",
+    neverSilent("performance", async (ctx) => {
+      const user = await requireUser(ctx);
+      if (!user) return;
+      await ctx.reply(await performanceText(user), { parse_mode: "HTML" });
+    })
+  );
 
-  bot.command("risk", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    await ctx.reply(riskText(user), { parse_mode: "HTML", reply_markup: riskKeyboard() });
-  });
+  bot.command(
+    "market",
+    neverSilent("market", async (ctx) => {
+      const symbol = ((ctx.match as string) || "BTCUSDT").trim().toUpperCase() || "BTCUSDT";
+      await ctx.reply(await marketText(symbol), { parse_mode: "HTML" });
+    })
+  );
 
-  bot.command("stop", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    await tradingOrchestrator.stopScanner(user.id);
-    await ctx.reply(
-      "🛑 <b>Trading Stopped</b>\n\n✓ New positions disabled\n✓ Market scanner stopped\n✓ Existing positions remain active",
-      { parse_mode: "HTML" }
-    );
-  });
+  bot.command(
+    "scan",
+    neverSilent("scan", async (ctx) => {
+      const user = await requireUser(ctx);
+      if (!user) return;
+      await ctx.reply("🔍 Сканирую BTC / ETH / SOL...");
+      await sendScan(ctx, user.id);
+    })
+  );
 
-  bot.command("panic", async (ctx) => {
-    await ctx.reply("⚠️ <b>EMERGENCY MODE</b>\n\nЧто сделать?", {
-      parse_mode: "HTML",
-      reply_markup: new InlineKeyboard()
-        .text("STOP EVERYTHING", "panic_all")
-        .row()
-        .text("Только закрыть позиции", "panic_close")
-        .row()
-        .text("Отмена", "panic_cancel"),
-    });
-  });
+  bot.command(
+    "positions",
+    neverSilent("positions", async (ctx) => {
+      const user = await requireUser(ctx);
+      if (!user) return;
+      await sendPositions(ctx, user.id);
+    })
+  );
 
-  bot.command("keys", async (ctx) => {
-    sessions.set(String(ctx.from?.id), { step: "api_key" });
-    await ctx.reply("Пришлите Binance API Key. Secret зашифруется, в чат не вернётся. /cancel");
-  });
+  bot.command(
+    "risk",
+    neverSilent("risk", async (ctx) => {
+      const user = await requireUser(ctx);
+      if (!user) return;
+      await ctx.reply(riskText(user), { parse_mode: "HTML", reply_markup: riskKeyboard() });
+    })
+  );
 
-  bot.command("cancel", async (ctx) => {
-    sessions.delete(String(ctx.from?.id));
-    await ctx.reply("Отменено.");
-  });
+  bot.command(
+    "stop",
+    neverSilent("stop", async (ctx) => {
+      const user = await requireUser(ctx);
+      if (!user) return;
+      await tradingOrchestrator.stopScanner(user.id);
+      await ctx.reply(
+        "🛑 <b>Trading Stopped</b>\n\n✓ New positions disabled\n✓ Market scanner stopped\n✓ Existing positions remain active",
+        { parse_mode: "HTML" }
+      );
+    })
+  );
 
-  bot.command("backtest", async (ctx) => {
-    const symbol = ((ctx.match as string) || "BTCUSDT").trim().toUpperCase() || "BTCUSDT";
-    await ctx.reply(`Backtest ${symbol}...`);
-    const result = await runHistoricalBacktest({ symbol });
-    await ctx.reply(
-      `📉 <b>Backtest ${symbol}</b>\nTrades: ${result.trades}\nReturn: ${result.totalReturnPct}%\nWin rate: ${result.winRate}%\nPF: ${result.profitFactor}\nMax DD: ${result.maxDrawdownPct}%\nSharpe: ${result.sharpeRatio}\nSortino: ${result.sortinoRatio}\nExpectancy: $${result.expectancy}\nFees: $${result.fees}`,
-      { parse_mode: "HTML" }
-    );
-  });
+  bot.command(
+    "panic",
+    neverSilent("panic", async (ctx) => {
+      await ctx.reply("⚠️ <b>EMERGENCY MODE</b>\n\nЧто сделать?", {
+        parse_mode: "HTML",
+        reply_markup: new InlineKeyboard()
+          .text("STOP EVERYTHING", "panic_all")
+          .row()
+          .text("Только закрыть позиции", "panic_close")
+          .row()
+          .text("Отмена", "panic_cancel"),
+      });
+    })
+  );
 
-  bot.command("unlock", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    await tradingOrchestrator.unlock(user.id);
-    await ctx.reply("LOCK снят явно. Сканер сам не включается — /startbot");
-  });
+  bot.command(
+    "keys",
+    neverSilent("keys", async (ctx) => {
+      sessions.set(String(ctx.from?.id), { step: "api_key" });
+      await ctx.reply("Пришлите Binance API Key. Secret зашифруется, в чат не вернётся. /cancel");
+    })
+  );
 
-  bot.command("startbot", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    try {
-      await tradingOrchestrator.startScanner(user.id);
-      await ctx.reply(`▶️ Start AI. Режим ${user.tradingMode}. Сканер BTC/ETH/SOL.`);
-    } catch (err) {
-      await ctx.reply(err instanceof Error ? err.message : "Не удалось запустить");
-    }
-  });
+  bot.command(
+    "cancel",
+    neverSilent("cancel", async (ctx) => {
+      sessions.delete(String(ctx.from?.id));
+      await ctx.reply("Отменено.");
+    })
+  );
 
-  bot.command("mode", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    await ctx.reply(modeText(user), { parse_mode: "HTML", reply_markup: modeKeyboard() });
-  });
+  bot.command(
+    "backtest",
+    neverSilent("backtest", async (ctx) => {
+      const symbol = ((ctx.match as string) || "BTCUSDT").trim().toUpperCase() || "BTCUSDT";
+      await ctx.reply(`Backtest ${symbol}...`);
+      const result = await runHistoricalBacktest({ symbol });
+      await ctx.reply(
+        `📉 <b>Backtest ${symbol}</b>\nTrades: ${result.trades}\nReturn: ${result.totalReturnPct}%\nWin rate: ${result.winRate}%\nPF: ${result.profitFactor}\nMax DD: ${result.maxDrawdownPct}%\nSharpe: ${result.sharpeRatio}\nSortino: ${result.sortinoRatio}\nExpectancy: $${result.expectancy}\nFees: $${result.fees}`,
+        { parse_mode: "HTML" }
+      );
+    })
+  );
 
-  bot.on("callback_query:data", async (ctx) => {
+  bot.command(
+    "unlock",
+    neverSilent("unlock", async (ctx) => {
+      const user = await requireUser(ctx);
+      if (!user) return;
+      await tradingOrchestrator.unlock(user.id);
+      await ctx.reply("LOCK снят явно. Сканер сам не включается — /startbot");
+    })
+  );
+
+  bot.command(
+    "startbot",
+    neverSilent("startbot", async (ctx) => {
+      const user = await requireUser(ctx);
+      if (!user) return;
+      try {
+        await tradingOrchestrator.startScanner(user.id);
+        await ctx.reply(`▶️ Start AI. Режим ${user.tradingMode}. Сканер BTC/ETH/SOL.`);
+      } catch (err) {
+        await ctx.reply(err instanceof Error ? err.message : "Не удалось запустить");
+      }
+    })
+  );
+
+  bot.command(
+    "mode",
+    neverSilent("mode", async (ctx) => {
+      const user = await requireUser(ctx);
+      if (!user) return;
+      await ctx.reply(modeText(user), { parse_mode: "HTML", reply_markup: modeKeyboard() });
+    })
+  );
+
+  bot.on("callback_query:data", neverSilent("callback", async (ctx) => {
     const user = await requireUser(ctx);
     if (!user) return;
     const data = ctx.callbackQuery.data;
@@ -269,7 +446,7 @@ export async function startTelegramBot() {
       return;
     }
     if (data === "stats") {
-      await ctx.reply(await statusText(user), { parse_mode: "HTML" });
+      await ctx.reply(await performanceText(user), { parse_mode: "HTML" });
       return;
     }
     if (data === "risk") {
@@ -311,10 +488,11 @@ export async function startTelegramBot() {
       return;
     }
     if (data.startsWith("slbe:")) {
-      const pos = await prisma.activePosition.findFirst({ where: { id: data.slice(5), userId: user.id } });
-      if (pos) {
-        await prisma.activePosition.update({ where: { id: pos.id }, data: { stopLossPrice: pos.entryPrice } });
-        await ctx.reply(`Stop Loss ${pos.symbol} перенесён в безубыток: $${pos.entryPrice}`);
+      try {
+        await tradingOrchestrator.moveStopToEntry(user.id, data.slice(5));
+        await ctx.reply("Stop moved to entry. New SL is live before old SL cancelled.");
+      } catch (err) {
+        await ctx.reply(err instanceof Error ? err.message : "Не удалось перенести SL");
       }
       return;
     }
@@ -355,9 +533,10 @@ export async function startTelegramBot() {
       const fresh = await prisma.user.findUnique({ where: { id: user.id }, include: { riskSettings: true } });
       if (fresh) await ctx.reply(riskText(fresh), { parse_mode: "HTML", reply_markup: riskKeyboard() });
     }
-  });
+  }));
 
   bot.on("message:text", async (ctx, next) => {
+    try {
     if (ctx.message.text.startsWith("/")) return next();
     const sess = sessions.get(String(ctx.from?.id));
     if (!sess) return next();
@@ -395,22 +574,71 @@ export async function startTelegramBot() {
     await ctx.reply(`Ключи сохранены. Маска <code>${saved.apiKeyMask}</code>\n${ping.message}`, {
       parse_mode: "HTML",
     });
+    } catch (err) {
+      logger.error({ err }, "keys message");
+      try {
+        await ctx.reply("Command error. Try /diagnostic.");
+      } catch {
+        /* ignore */
+      }
+    }
   });
 
-  try {
-    await bot.init();
-    logger.info(`Telegram-бот @${bot.botInfo.username} готов. https://t.me/${bot.botInfo.username}`);
-  } catch (err) {
-    logger.error({ err }, "Не удалось подключить Telegram-бота");
-    return null;
+  telegramRuntime.polling = true;
+  telegramRuntime.username = me.username;
+  bootLog("[TELEGRAM] Polling started");
+  bootLog(`[TELEGRAM] Bot username: @${me.username}`);
+  bootLog(`[TELEGRAM] Telegram polling @${me.username}`);
+  if (config.telegramOwnerChatId) {
+    void sendTelegramMessage({
+      botToken: token,
+      chatId: config.telegramOwnerChatId,
+      message: "🟢 <b>SynapseAI System Online</b>\nRecovery + workers starting. Auto trades wait until reconcile finishes.",
+      parseMode: "HTML",
+    });
   }
-  void bot
-    .start({
-      drop_pending_updates: true,
-      onStart: (info) => logger.info(`Telegram polling @${info.username}`),
-    })
-    .catch((err) => logger.error({ err }, "Telegram bot.start failed"));
+
+  void pollUpdates(bot);
   return bot;
+}
+
+async function pollUpdates(bot: Bot) {
+  let offset = 0;
+  while (runningBot === bot && telegramRuntime.polling) {
+    try {
+      const updates = await telegramGetUpdates(offset, 25);
+      for (const update of updates) {
+        offset = update.update_id + 1;
+        await bot.handleUpdate(update as Update);
+      }
+    } catch (err) {
+      if (!telegramRuntime.polling || runningBot !== bot) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/409|terminated by other getUpdates/i.test(msg)) {
+        bootLog("[TELEGRAM:FATAL]");
+        bootLog("Another SynapseAI bot instance is already running.");
+        bootLog("Stop the other process.");
+        telegramRuntime.polling = false;
+        telegramRuntime.lastError = "409 Conflict";
+        releaseTelegramLock();
+        return;
+      }
+      logger.error({ err }, "Telegram getUpdates");
+      telegramRuntime.lastError = msg;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+}
+
+export async function stopTelegramBot() {
+  telegramRuntime.polling = false;
+  try {
+    await runningBot?.stop();
+  } catch {
+    /* ignore */
+  }
+  runningBot = null;
+  releaseTelegramLock();
 }
 
 async function sendScan(ctx: { reply: Function }, userId: string) {
@@ -483,6 +711,39 @@ async function statusText(user: Awaited<ReturnType<typeof requireUser>>) {
   );
 }
 
+async function performanceText(user: NonNullable<Awaited<ReturnType<typeof requireUser>>>) {
+  const rows = await prisma.orderHistory.findMany({ where: { userId: user.id } });
+  const n = rows.length;
+  if (!n) {
+    return "📈 <b>Performance</b>\n\nПока нет закрытых сделок.";
+  }
+  const wins = rows.filter((r) => r.pnl > 0);
+  const losses = rows.filter((r) => r.pnl < 0);
+  const grossWin = wins.reduce((s, r) => s + r.pnl, 0);
+  const grossLoss = Math.abs(losses.reduce((s, r) => s + r.pnl, 0));
+  const fees = rows.reduce((s, r) => s + (r.commissionUsdt || 0), 0);
+  const avgWin = wins.length ? grossWin / wins.length : 0;
+  const avgLoss = losses.length ? grossLoss / losses.length : 0;
+  const winRate = (wins.length / n) * 100;
+  const pf = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? 99 : 0;
+  const expectancy = rows.reduce((s, r) => s + r.pnl, 0) / n;
+  let peak = 0;
+  let equity = 0;
+  let maxDd = 0;
+  for (const r of [...rows].sort((a, b) => (a.closedAt || a.createdAt).getTime() - (b.closedAt || b.createdAt).getTime())) {
+    equity += r.pnl;
+    if (equity > peak) peak = equity;
+    const dd = peak - equity;
+    if (dd > maxDd) maxDd = dd;
+  }
+  return (
+    `📈 <b>Performance</b>\n\n` +
+    `Trades: ${n}\nWin rate: ${winRate.toFixed(1)}%\nProfit factor: ${pf.toFixed(2)}\n` +
+    `Expectancy: $${expectancy.toFixed(2)}\nAvg win: $${avgWin.toFixed(2)}\nAvg loss: $${avgLoss.toFixed(2)}\n` +
+    `Max DD: $${maxDd.toFixed(2)}\nFees: $${fees.toFixed(4)}\nMode: ${user.tradingMode}`
+  );
+}
+
 async function marketText(symbol: string) {
   const snap = await snapshotFor(symbol);
   const m = snap.m5 || snap.h1;
@@ -531,18 +792,29 @@ function riskKeyboard() {
 }
 
 async function requireUser(ctx: {
-  from?: { id: number; first_name?: string; last_name?: string };
+  from?: { id: number; first_name?: string; last_name?: string; username?: string };
   chat?: { id: number };
   reply: (t: string) => Promise<unknown>;
 }) {
-  if (!ctx.from) return null;
-  const user = await upsertTelegramUser(
-    String(ctx.from.id),
-    String(ctx.chat?.id || ctx.from.id),
-    [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ")
-  );
-  return prisma.user.findUnique({
-    where: { id: user.id },
-    include: { riskSettings: true, credentials: true },
-  });
+  if (!ctx.from) {
+    await ctx.reply("Cannot identify Telegram user.");
+    return null;
+  }
+  try {
+    const user = await upsertTelegramUser(
+      String(ctx.from.id),
+      String(ctx.chat?.id || ctx.from.id),
+      [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ")
+    );
+    return prisma.user.findUnique({
+      where: { id: user.id },
+      include: { riskSettings: true, credentials: true },
+    });
+  } catch (err) {
+    logger.error({ err }, "requireUser/database");
+    await ctx.reply(
+      "⚠️ SynapseAI backend started,\nbut database is unavailable.\n\nTrading is disabled.\n\nPlease contact administrator."
+    );
+    return null;
+  }
 }

@@ -6,6 +6,7 @@ import {
   commissionForOrder,
   getFuturesAccount,
   getPositionRisk,
+  listOpenFuturesOrders,
   placeFuturesOrder,
   queryFuturesOrder,
   setLeverage,
@@ -13,6 +14,14 @@ import {
 } from "../../exchanges/binance/futuresClient.js";
 import { meetsMinNotional, roundPrice, roundQty } from "../../exchanges/binance/precision.js";
 import { logger } from "../../logger.js";
+
+function isWorkingAlgo(status: string) {
+  return /^(NEW|PARTIALLY_FILLED|FILLED)$/i.test(status);
+}
+
+async function sleep(ms: number) {
+  await new Promise((r) => setTimeout(r, ms));
+}
 
 export class BinanceExecution implements ExecutionProvider {
   constructor(
@@ -155,27 +164,124 @@ export class BinanceExecution implements ExecutionProvider {
     takeProfit: number;
     slClientId: string;
     tpClientId: string;
+    quantity: number;
   }) {
     const closeSide = params.entrySide === "BUY" ? "SELL" : "BUY";
-    const slPrice = roundPrice(params.symbol, params.stopLoss, this.isTestnet);
-    const tpPrice = roundPrice(params.symbol, params.takeProfit, this.isTestnet);
-    const sl = await placeFuturesOrder(this.apiKey, this.apiSecret, this.isTestnet, {
+    const qty = roundQty(params.symbol, params.quantity, this.isTestnet);
+    const sl = await this.placeAlgoWithRetry({
       symbol: params.symbol,
       side: closeSide,
       type: "STOP_MARKET",
-      stopPrice: slPrice,
-      closePosition: true,
-      newClientOrderId: params.slClientId,
+      stopPrice: roundPrice(params.symbol, params.stopLoss, this.isTestnet),
+      quantity: qty,
+      clientOrderId: params.slClientId,
     });
-    const tp = await placeFuturesOrder(this.apiKey, this.apiSecret, this.isTestnet, {
+    const tp = await this.placeAlgoWithRetry({
       symbol: params.symbol,
       side: closeSide,
       type: "TAKE_PROFIT_MARKET",
-      stopPrice: tpPrice,
-      closePosition: true,
-      newClientOrderId: params.tpClientId,
+      stopPrice: roundPrice(params.symbol, params.takeProfit, this.isTestnet),
+      quantity: qty,
+      clientOrderId: params.tpClientId,
     });
     return { slOrderId: sl.orderId, tpOrderId: tp.orderId };
+  }
+
+  private async placeAlgoWithRetry(params: {
+    symbol: string;
+    side: "BUY" | "SELL";
+    type: "STOP_MARKET" | "TAKE_PROFIT_MARKET";
+    stopPrice: number;
+    quantity: number;
+    clientOrderId: string;
+  }) {
+    let lastErr = "algo not acknowledged";
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const existing = await queryFuturesOrder({
+          apiKey: this.apiKey,
+          apiSecret: this.apiSecret,
+          isTestnet: this.isTestnet,
+          symbol: params.symbol,
+          origClientOrderId: params.clientOrderId,
+        });
+        if (existing?.orderId && isWorkingAlgo(existing.status)) {
+          return existing;
+        }
+        const placed = await placeFuturesOrder(this.apiKey, this.apiSecret, this.isTestnet, {
+          symbol: params.symbol,
+          side: params.side,
+          type: params.type,
+          stopPrice: params.stopPrice,
+          quantity: params.quantity,
+          reduceOnly: true,
+          newClientOrderId: params.clientOrderId,
+        });
+        const confirmed = await queryFuturesOrder({
+          apiKey: this.apiKey,
+          apiSecret: this.apiSecret,
+          isTestnet: this.isTestnet,
+          symbol: params.symbol,
+          origClientOrderId: params.clientOrderId,
+        });
+        const snap = confirmed || placed;
+        if (snap.orderId && isWorkingAlgo(snap.status || "NEW")) {
+          return snap;
+        }
+        lastErr = `algo status ${snap.status || "empty"}`;
+      } catch (err) {
+        lastErr = err instanceof Error ? err.message : String(err);
+        const existing = await queryFuturesOrder({
+          apiKey: this.apiKey,
+          apiSecret: this.apiSecret,
+          isTestnet: this.isTestnet,
+          symbol: params.symbol,
+          origClientOrderId: params.clientOrderId,
+        }).catch(() => null);
+        if (existing?.orderId && isWorkingAlgo(existing.status)) return existing;
+      }
+      await sleep(400 * attempt);
+    }
+    throw new Error(`${params.type} confirm failed: ${lastErr}`);
+  }
+
+  async replaceStop(params: {
+    symbol: string;
+    entrySide: "BUY" | "SELL";
+    stopLoss: number;
+    quantity: number;
+    oldSlOrderId?: string | null;
+    slClientId: string;
+  }) {
+    const closeSide = params.entrySide === "BUY" ? "SELL" : "BUY";
+    const placed = await this.placeAlgoWithRetry({
+      symbol: params.symbol,
+      side: closeSide,
+      type: "STOP_MARKET",
+      stopPrice: roundPrice(params.symbol, params.stopLoss, this.isTestnet),
+      quantity: roundQty(params.symbol, params.quantity, this.isTestnet),
+      clientOrderId: params.slClientId,
+    });
+    if (params.oldSlOrderId) {
+      await this.cancelProtective({ symbol: params.symbol, slOrderId: params.oldSlOrderId });
+    }
+    return { slOrderId: placed.orderId };
+  }
+
+  async listOpenOrders(symbol?: string) {
+    const rows = await listOpenFuturesOrders({
+      apiKey: this.apiKey,
+      apiSecret: this.apiSecret,
+      isTestnet: this.isTestnet,
+      symbol,
+    });
+    return rows.map((r) => ({
+      orderId: r.orderId,
+      clientOrderId: r.clientOrderId,
+      symbol: r.symbol,
+      status: r.status,
+      type: r.type,
+    }));
   }
 
   async cancelProtective(params: { symbol: string; slOrderId?: string | null; tpOrderId?: string | null }) {

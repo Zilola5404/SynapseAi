@@ -20,7 +20,9 @@
     "test:stage2": "tsx server/market/stage2.test.ts",
     "test:stage3": "tsx server/risk.test.ts",
     "test:stage4": "tsx server/binanceErrors.test.ts",
-    "test:stage5": "tsx server/services/aiService.test.ts"
+    "test:stage5": "tsx server/services/aiService.test.ts",
+    "test:telegram": "tsx scripts/test-telegram.ts",
+    "test:execution": "tsx server/trading/executionLayer.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

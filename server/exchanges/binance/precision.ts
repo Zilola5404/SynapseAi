@@ -5,13 +5,14 @@ export interface SymbolFilters {
   tickSize: number;
   stepSize: number;
   minQty: number;
+  maxQty: number;
   minNotional: number;
 }
 
 const FALLBACK: Record<string, SymbolFilters> = {
-  BTCUSDT: { tickSize: 0.1, stepSize: 0.001, minQty: 0.001, minNotional: 100 },
-  ETHUSDT: { tickSize: 0.01, stepSize: 0.001, minQty: 0.001, minNotional: 20 },
-  SOLUSDT: { tickSize: 0.001, stepSize: 0.01, minQty: 0.01, minNotional: 5 },
+  BTCUSDT: { tickSize: 0.1, stepSize: 0.001, minQty: 0.001, maxQty: 1000, minNotional: 100 },
+  ETHUSDT: { tickSize: 0.01, stepSize: 0.001, minQty: 0.001, maxQty: 10000, minNotional: 20 },
+  SOLUSDT: { tickSize: 0.001, stepSize: 0.01, minQty: 0.01, maxQty: 100000, minNotional: 5 },
 };
 
 const cache = new Map<string, { at: number; filters: Map<string, SymbolFilters> }>();
@@ -30,6 +31,7 @@ function parseFilters(info: any): Map<string, SymbolFilters> {
       tickSize: parseFloat(tick.tickSize || "0.01"),
       stepSize: parseFloat(lot.stepSize || "0.001"),
       minQty: parseFloat(lot.minQty || "0.001"),
+      maxQty: parseFloat(lot.maxQty || "1000000"),
       minNotional: parseFloat(minN.notional || minN.minNotional || "5"),
     });
   }
@@ -68,7 +70,9 @@ function roundToStep(value: number, step: number): number {
 export function roundQty(symbol: string, qty: number, isTestnet = true): number {
   const f = filtersFor(symbol, isTestnet);
   const rounded = roundToStep(qty, f.stepSize);
-  return rounded < f.minQty ? 0 : rounded;
+  if (rounded < f.minQty) return 0;
+  if (rounded > f.maxQty) return roundToStep(f.maxQty, f.stepSize);
+  return rounded;
 }
 
 export function roundPrice(symbol: string, price: number, isTestnet = true): number {

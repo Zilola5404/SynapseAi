@@ -4,12 +4,13 @@ import { logger } from "../../logger.js";
 export interface FuturesOrderParams {
   symbol: string;
   side: "BUY" | "SELL";
-  type: "MARKET" | "LIMIT" | "STOP_MARKET" | "TAKE_PROFIT_MARKET";
+  type: "MARKET" | "LIMIT" | "STOP_MARKET" | "TAKE_PROFIT_MARKET" | "TRAILING_STOP_MARKET";
   quantity?: number;
   price?: number;
   stopPrice?: number;
   reduceOnly?: boolean;
   closePosition?: boolean;
+  callbackRate?: number;
   newClientOrderId: string;
   timeInForce?: "GTC" | "IOC" | "FOK";
 }
@@ -154,6 +155,7 @@ export async function placeFuturesOrder(
       stopPrice: params.stopPrice,
       reduceOnly: params.reduceOnly ? "true" : undefined,
       closePosition: params.closePosition ? "true" : undefined,
+      callbackRate: params.callbackRate,
       newClientOrderId: params.newClientOrderId,
       timeInForce: params.type === "LIMIT" ? params.timeInForce || "GTC" : undefined,
     },
@@ -190,6 +192,35 @@ export async function queryFuturesOrder(params: {
     throw new Error(`query order ${r.status}: ${r.text}`);
   }
   return snapshot(r.data, params.origClientOrderId || "");
+}
+
+export async function listOpenFuturesOrders(params: {
+  apiKey: string;
+  apiSecret: string;
+  isTestnet: boolean;
+  symbol?: string;
+}): Promise<FuturesOrderSnapshot[]> {
+  const r = await signed({
+    method: "GET",
+    path: "/fapi/v1/openOrders",
+    query: { symbol: params.symbol ? params.symbol.replace("/", "").toUpperCase() : undefined },
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    isTestnet: params.isTestnet,
+  });
+  if (!r.ok) throw new Error(`openOrders ${r.status}: ${r.text}`);
+  const rows = Array.isArray(r.data) ? r.data : [];
+  return rows.map((row: any) => snapshot(row, String(row.clientOrderId || "")));
+}
+
+export async function pingFuturesRest(isTestnet = true): Promise<boolean> {
+  try {
+    const url = `${getBinanceBaseUrl(isTestnet, true)}/fapi/v1/ping`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000), headers: { "User-Agent": "SynapseCryptoAI/1.0" } });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function waitForFill(params: {

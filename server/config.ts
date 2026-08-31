@@ -34,7 +34,11 @@ export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY || "",
   telegramBotToken: (process.env.TELEGRAM_BOT_TOKEN || "").trim().replace(/^["']|["']$/g, ""),
   telegramOwnerChatId: (process.env.TELEGRAM_CHAT_ID || "").trim().replace(/^["']|["']$/g, ""),
-  telegramProxy: (process.env.TELEGRAM_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy || "").trim(),
+  telegramProxy: (
+    process.env.TELEGRAM_PROXY !== undefined
+      ? process.env.TELEGRAM_PROXY
+      : process.env.HTTPS_PROXY || process.env.https_proxy || ""
+  ).trim(),
   telegramApiRoot: (process.env.TELEGRAM_API_ROOT || "https://api.telegram.org").trim().replace(/\/$/, ""),
   binanceUseTestnet: process.env.BINANCE_USE_TESTNET !== "false",
 };
