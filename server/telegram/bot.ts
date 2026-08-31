@@ -168,6 +168,7 @@ export async function startTelegramBot() {
   bot.command("stop", act("stop_bot"));
   bot.command("settings", act("settings"));
   bot.command("help", act("help"));
+  bot.command("paper", act("paper"));
   bot.command("panic", act("panic"));
   bot.command("scan", act("signals"));
   bot.command("risk", act("risk"));

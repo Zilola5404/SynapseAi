@@ -47,7 +47,9 @@ export function resultsScreen(
     lang === "en"
       ? `💰 <b>MY RESULTS</b>\n\n📅 Today\n\n📈 Profit:\n${money(s.profit)}\n\n📉 Loss:\n${money(-Math.abs(s.loss))}\n\n💳 Fees:\n${money(-Math.abs(s.fees))}\n\n━━━━━━━━━━\n\n💰 Total:\n${money(s.net)}\n\n📊 Trades:\n${s.trades}\n\n🟢 Winning:\n${s.wins}\n\n🔴 Losing:\n${s.losses}`
       : `💰 <b>МОИ РЕЗУЛЬТАТЫ</b>\n\n📅 Сегодня\n\n📈 Прибыль:\n${money(s.profit)}\n\n📉 Убыток:\n${money(-Math.abs(s.loss))}\n\n💳 Комиссии:\n${money(-Math.abs(s.fees))}\n\n━━━━━━━━━━\n\n💰 Итог:\n${money(s.net)}\n\n📊 Сделок:\n${s.trades}\n\n🟢 Прибыльных:\n${s.wins}\n\n🔴 Убыточных:\n${s.losses}`;
-  const kb = new InlineKeyboard().text(lang === "en" ? "📊 Statistics" : "📊 Статистика", "stats");
+  const kb = new InlineKeyboard()
+    .text(lang === "en" ? "📊 Statistics" : "📊 Статистика", "stats")
+    .text(lang === "en" ? "📋 PAPER check" : "📋 PAPER-проверка", "paper");
   navRow(kb.row(), lang);
   return { text, markup: kb };
 }

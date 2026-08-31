@@ -22,6 +22,7 @@ export const en = {
     { command: "stop", description: "Stop auto trading" },
     { command: "settings", description: "Settings" },
     { command: "help", description: "Help" },
+    { command: "paper", description: "PAPER check" },
     { command: "panic", description: "Emergency stop" },
   ],
   navBack: "⬅️ Back",

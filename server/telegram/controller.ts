@@ -30,7 +30,8 @@ import { replyMainKeyboard } from "./ui/keyboards.js";
 import { pendingSignals } from "./state.js";
 import { systemSnapshot } from "../routes/health.js";
 import { telegramRuntime } from "./runtime.js";
-import { equityForUser } from "../trading/equity.js";
+import { paperSoakScreen } from "./ui/paperMenu.js";
+import { loadPaperSoak } from "./paperSoakQuery.js";
 
 export type TgUser = User & { riskSettings: RiskSettings | null; credentials: ExchangeCredential | null };
 
@@ -293,6 +294,12 @@ export async function handleAction(
     }
     if (action === "stats") {
       await showStats(reply, user);
+      return;
+    }
+    if (action === "paper") {
+      const report = await loadPaperSoak(user.id);
+      const screen = paperSoakScreen(lang, report);
+      await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
       return;
     }
     if (action === "risk") {

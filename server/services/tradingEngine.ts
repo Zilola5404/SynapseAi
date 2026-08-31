@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import { logger } from "../logger.js";
+import { loadPaperSoak } from "../telegram/paperSoakQuery.js";
 import { tradingOrchestrator } from "../trading/orchestrator/TradingOrchestrator.js";
 import { getDecryptedCredentials } from "./credentialService.js";
 import { startUserDataStream, stopAllUserDataStreams, userStreamCount } from "../market/userDataStream.js";
@@ -117,7 +118,28 @@ export function startTradingEngine() {
     if (!engineReady) return;
     lastScanAt = Date.now();
     tradingOrchestrator.runAutoCycle()
-      .then(() => beat("trading"))
+      .then(async () => {
+        await beat("trading");
+        const paperUsers = await prisma.user.findMany({
+          where: { tradingMode: "PAPER", autoTradeEnabled: true },
+          select: { id: true },
+        });
+        for (const u of paperUsers) {
+          const soak = await loadPaperSoak(u.id);
+          logger.info(
+            {
+              closed: soak.closed,
+              open: soak.open,
+              sl: soak.slCloses,
+              tp: soak.tpCloses,
+              stuck: soak.stuckClosing,
+              dups: soak.duplicateSymbols,
+              ready: soak.readyForTestnet,
+            },
+            "[PAPER] soak"
+          );
+        }
+      })
       .catch((err) => logger.error({ err }, "TradingWorker"));
   }, 30_000);
 

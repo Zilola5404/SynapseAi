@@ -40,7 +40,9 @@ export function homeInline(autoOn: boolean, lang: LocaleCode) {
     .text(lang === "en" ? "🔎 Signals" : "🔎 Сигналы", "signals")
     .text(lang === "en" ? "🛡 Risks" : "🛡 Риски", "risk")
     .row()
+    .text(lang === "en" ? "📋 PAPER check" : "📋 PAPER-проверка", "paper")
     .text(lang === "en" ? "⚙️ Settings" : "⚙️ Настройки", "settings")
+    .row()
     .text(lang === "en" ? "❓ Help" : "❓ Помощь", "help")
     .row()
     .text(lang === "en" ? "🚨 STOP" : "🚨 STOP", "panic");

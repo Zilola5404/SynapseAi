@@ -22,6 +22,7 @@ export const ru = {
     { command: "stop", description: "Остановить автоторговлю" },
     { command: "settings", description: "Настройки" },
     { command: "help", description: "Помощь" },
+    { command: "paper", description: "Проверка PAPER" },
     { command: "panic", description: "Экстренная остановка" },
   ],
   navBack: "⬅️ Назад",
