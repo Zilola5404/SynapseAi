@@ -990,8 +990,8 @@ async function boot() {
   } else {
     startTradingEngine();
   }
-  await startTelegramBot();
   logger.info("Запуск HTTP-сервера (Vite в dev может занять несколько секунд)...");
+  void startTelegramBot().catch((err) => logger.error({ err }, "Telegram bot boot failed"));
   await startServer();
 }
 

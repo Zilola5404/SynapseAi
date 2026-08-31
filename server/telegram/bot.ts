@@ -12,6 +12,7 @@ import { saveExchangeCredentials, getDecryptedCredentials } from "../services/cr
 import { testBinanceApiConnection } from "../binance.js";
 import { runHistoricalBacktest } from "../trading/backtest/BacktestEngine.js";
 import { binanceWsManager } from "../websocket.js";
+import { probeTelegramApi, telegramApiRoot, telegramFetch } from "./transport.js";
 import type { StrategySignal } from "../trading/types.js";
 
 const pendingSignals = new Map<string, StrategySignal>();
@@ -39,24 +40,57 @@ export async function startTelegramBot() {
     return null;
   }
 
-  logger.info("Подключаем Telegram-бота...");
-  const bot = new Bot(token);
-  bot.catch((err) => logger.error({ err: err.error }, "Telegram bot error"));
+  logger.info({ apiRoot: telegramApiRoot(), proxy: Boolean(config.telegramProxy) }, "Проверяем Telegram API...");
+  const probe = await probeTelegramApi(8000);
+  if (!probe.ok) {
+    logger.error(
+      { ms: probe.ms, error: probe.error },
+      "Telegram API недоступен. /start не ответит, пока не будет VPN или TELEGRAM_PROXY (например http://127.0.0.1:7890). HTTP-сервер продолжит запуск."
+    );
+    return null;
+  }
+
+  logger.info({ ms: probe.ms }, "Telegram API доступен, подключаем бота...");
+  const bot = new Bot(token, {
+    client: {
+      apiRoot: telegramApiRoot(),
+      timeoutSeconds: 20,
+      fetch: telegramFetch as never,
+    },
+  });
+  bot.catch(async (err) => {
+    logger.error({ err: err.error }, "Telegram bot error");
+    try {
+      await err.ctx?.reply("Ошибка обработки команды. Попробуйте ещё раз.");
+    } catch {
+      /* ignore */
+    }
+  });
 
   bot.command("start", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    const mode = user.tradingMode || "PAPER";
-    const modeLine =
-      mode === "LIVE" ? "🔴 <b>LIVE</b>" : mode === "TESTNET" ? "🟠 <b>TESTNET</b>" : "🟡 <b>PAPER TRADING</b>";
-    await ctx.reply(
-      `🤖 <b>Добро пожаловать в SynapseAI</b>\n\n` +
-        `AI Trading Assistant готов к работе.\n\n` +
-        `Текущий режим:\n${modeLine}\n\n` +
-        `Ваш баланс:\n$${user.paperBalanceUsdt.toFixed(2)} (paper)\n\n` +
-        `Автоторговля:\n${user.autoTradeEnabled ? "🟢 ON" : "🔴 OFF"}`,
-      { parse_mode: "HTML", reply_markup: mainKeyboard() }
-    );
+    try {
+      const user = await requireUser(ctx);
+      if (!user) {
+        await ctx.reply("Не удалось определить аккаунт Telegram.");
+        return;
+      }
+      const mode = user.tradingMode || "PAPER";
+      const modeLine =
+        mode === "LIVE" ? "🔴 <b>LIVE</b>" : mode === "TESTNET" ? "🟠 <b>TESTNET</b>" : "🟡 <b>PAPER TRADING</b>";
+      await ctx.reply(
+        `🤖 <b>Добро пожаловать в SynapseAI</b>\n\n` +
+          `AI Trading Assistant готов к работе.\n\n` +
+          `Текущий режим:\n${modeLine}\n\n` +
+          `Ваш баланс:\n$${user.paperBalanceUsdt.toFixed(2)} (paper)\n\n` +
+          `Автоторговля:\n${user.autoTradeEnabled ? "🟢 ON" : "🔴 OFF"}`,
+        { parse_mode: "HTML", reply_markup: mainKeyboard() }
+      );
+    } catch (err) {
+      logger.error({ err }, "/start failed");
+      await ctx.reply(
+        "Бот получил /start, но не смог создать аккаунт. Обычно это PostgreSQL. Проверьте Docker и напишите /start ещё раз."
+      );
+    }
   });
 
   bot.command("help", async (ctx) =>
@@ -370,7 +404,12 @@ export async function startTelegramBot() {
     logger.error({ err }, "Не удалось подключить Telegram-бота");
     return null;
   }
-  void bot.start().catch((err) => logger.error({ err }, "Telegram bot.start failed"));
+  void bot
+    .start({
+      drop_pending_updates: true,
+      onStart: (info) => logger.info(`Telegram polling @${info.username}`),
+    })
+    .catch((err) => logger.error({ err }, "Telegram bot.start failed"));
   return bot;
 }
 

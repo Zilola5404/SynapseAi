@@ -3,31 +3,33 @@
  * Sending automated alerts to user's Telegram Chat/Group
  */
 
+import { telegramFetch, telegramApiRoot } from "./telegram/transport.js";
+
 export interface TelegramMessagePayload {
   botToken: string;
   chatId: string;
   message: string;
-  parseMode?: 'HTML' | 'Markdown';
+  parseMode?: "HTML" | "Markdown";
 }
 
 export async function sendTelegramMessage({
   botToken,
   chatId,
   message,
-  parseMode = 'HTML',
+  parseMode = "HTML",
 }: TelegramMessagePayload): Promise<{ success: boolean; messageId?: number; error?: string }> {
   try {
     const cleanToken = botToken?.trim();
     const cleanChatId = chatId?.trim();
 
     if (!cleanToken || !cleanChatId) {
-      return { success: false, error: 'Telegram Bot Token и Chat ID обязательны' };
+      return { success: false, error: "Telegram Bot Token и Chat ID обязательны" };
     }
 
-    const url = `https://api.telegram.org/bot${cleanToken}/sendMessage`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const url = `${telegramApiRoot()}/bot${cleanToken}/sendMessage`;
+    const response = await telegramFetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: cleanChatId,
         text: message,
@@ -52,7 +54,7 @@ export async function sendTelegramMessage({
   } catch (err: any) {
     return {
       success: false,
-      error: err.message || 'Сбой при отправке сообщения в Telegram',
+      error: err.message || "Сбой при отправке сообщения в Telegram",
     };
   }
 }
