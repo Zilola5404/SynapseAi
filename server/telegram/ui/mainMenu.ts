@@ -1,0 +1,45 @@
+import type { LocaleCode } from "../locales/index.js";
+import { modeLabel } from "./format.js";
+import { homeInline } from "./keyboards.js";
+
+export function homeScreen(params: {
+  lang: LocaleCode;
+  mode: string;
+  autoOn: boolean;
+  openCount: number;
+  locked?: boolean;
+}) {
+  const mode = params.mode === "LIVE" ? "LIVE" : params.mode === "TESTNET" ? "TESTNET" : "PAPER";
+  const auto = params.autoOn
+    ? params.lang === "en" ? "Running" : "Включена"
+    : params.lang === "en" ? "Stopped" : "Остановлена";
+  const lock = params.locked
+    ? params.lang === "en"
+      ? "\n🔒 Trading is locked after an emergency stop."
+      : "\n🔒 Торговля заблокирована после экстренной остановки."
+    : "";
+  const text =
+    params.lang === "en"
+      ? `🤖 <b>Welcome to SynapseAI</b>\n\nI analyse the market and can automatically look for trading opportunities and manage your trades.\n\n📊 Mode: ${mode}\n🤖 Auto trading: ${auto}\n💼 Open trades: ${params.openCount}${lock}\n\nChoose an action 👇`
+      : `🤖 <b>Добро пожаловать в SynapseAI</b>\n\nЯ анализирую рынок и могу автоматически\nискать торговые возможности и управлять сделками.\n\n📊 Режим: ${mode}\n🤖 Автоторговля: ${auto}\n💼 Открытых сделок: ${params.openCount}${lock}\n\nВыберите действие 👇`;
+  return { text, markup: homeInline(params.autoOn, params.lang) };
+}
+
+export function botStartedText(lang: LocaleCode, mode: string) {
+  const pairs = "• BTC\n• ETH\n• SOL";
+  return lang === "en"
+    ? `🤖 <b>Auto trading is on</b>\n\nI am starting to analyse the market:\n\n${pairs}\n\nIf a suitable opportunity appears, I will check the risk before opening a trade.\n\n🛡 Every trade goes through Risk Management.\n\nStatus:\n🟢 Auto trading enabled\n\nMode: ${modeLabel(mode, lang)}`
+    : `🤖 <b>Автоторговля запущена</b>\n\nЯ начинаю анализировать рынок:\n\n${pairs}\n\nЕсли появится подходящая торговая возможность,\nя проведу проверку риска перед открытием сделки.\n\n🛡 Все сделки проходят Risk Management.\n\nСтатус:\n🟢 Автоторговля включена`;
+}
+
+export function botStoppedText(lang: LocaleCode) {
+  return lang === "en"
+    ? `⏸ <b>Auto trading stopped</b>\n\nI will not open any new trades.\n\n⚠️ Trades that are already open will still be watched by the protection system (Stop Loss / Take Profit).\n\nStopping the bot ≠ closing current trades.`
+    : `⏸ <b>Автоторговля остановлена</b>\n\nЯ больше не буду открывать новые сделки.\n\n⚠️ Уже открытые позиции продолжат\nконтролироваться системой защиты.\n\nОстановить бота ≠ закрыть текущие сделки.`;
+}
+
+export function lockedNeedUnlock(lang: LocaleCode) {
+  return lang === "en"
+    ? "🔒 Trading is locked. Use /unlock after you review what happened, then start the bot again."
+    : "🔒 Торговля заблокирована. После проверки нажмите /unlock, затем снова запустите бота.";
+}

@@ -44,6 +44,14 @@ model User {
   testnetEquityUsdt       Float   @default(0)
   liveEquityUsdt          Float   @default(0)
   liveConfirmedAt         DateTime?
+  locale                  String   @default("ru")
+  notifyTradeOpen         Boolean  @default(true)
+  notifyTradeClose        Boolean  @default(true)
+  notifySignal            Boolean  @default(true)
+  notifyRisk              Boolean  @default(true)
+  notifySystem            Boolean  @default(true)
+  notifyDailyReport       Boolean  @default(true)
+  lastDailyReportAt       DateTime?
   signals                 Signal[]
   exchangeOrders          ExchangeOrder[]
   circuitBreaker          CircuitBreakerState?
@@ -118,7 +126,7 @@ model ActivePosition {
   entryOrderId       String?
   closedAt           DateTime?
 
-  @@unique([userId, symbol])
+  @@index([userId, symbol, status])
   @@index([userId, status])
   @@map("active_positions")
 }

@@ -68,3 +68,14 @@ export async function telegramGetUpdates(offset: number, timeoutSec = 25) {
 export function isInvalidTokenError(message: string) {
   return /unauthorized|invalid token|not found/i.test(message);
 }
+
+export async function telegramSetMyCommands(
+  commands: { command: string; description: string }[],
+  languageCode?: string
+) {
+  const body: Record<string, unknown> = { commands };
+  if (languageCode) body.language_code = languageCode;
+  const { data } = await botCall("setMyCommands", body);
+  if (!data?.ok) throw new Error(data?.description || "setMyCommands failed");
+  return true;
+}

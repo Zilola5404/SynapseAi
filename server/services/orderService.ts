@@ -12,6 +12,7 @@ import {
 } from "../binance.js";
 import { binanceWsManager } from "../websocket.js";
 import { logger } from "../logger.js";
+import { livePositionStatus } from "../trading/positionState.js";
 
 export async function realizedPnl24h(userId: string): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -59,7 +60,7 @@ export async function placeGuardedOrder(params: {
   }
 
   const risk = user.riskSettings as ServerRiskSettings;
-  const openCount = await prisma.activePosition.count({ where: { userId: params.userId } });
+  const openCount = await prisma.activePosition.count({ where: { userId: params.userId, status: livePositionStatus } });
   const pnl24h = await realizedPnl24h(params.userId);
   const equity = await accountEquity(params.userId);
 
@@ -196,9 +197,9 @@ export async function closePosition(params: {
   exitPrice?: number;
 }) {
   const pos = await prisma.activePosition.findFirst({
-    where: { id: params.positionId, userId: params.userId },
+    where: { id: params.positionId, userId: params.userId, status: livePositionStatus },
   });
-  if (!pos) throw new Error("Позиция не найдена");
+  if (!pos) throw new Error("Position not found or already closed");
 
   const exitPrice = params.exitPrice || binanceWsManager.getPrice(pos.symbol) || pos.currentPrice;
   const isLong = pos.side === "LONG";
@@ -246,7 +247,10 @@ export async function closePosition(params: {
     },
   });
 
-  await prisma.activePosition.delete({ where: { id: pos.id } });
+  await prisma.activePosition.update({
+    where: { id: pos.id },
+    data: { status: "CLOSED", closedAt: new Date() },
+  });
 
   const user = await prisma.user.findUnique({ where: { id: params.userId } });
   const newPaper = (user?.paperBalanceUsdt ?? 0) + pos.marginUsdt + pnl;
@@ -279,7 +283,7 @@ export async function triggerKillSwitch(userId: string) {
     data: { autoTradeEnabled: false },
   });
 
-  const positions = await prisma.activePosition.findMany({ where: { userId } });
+  const positions = await prisma.activePosition.findMany({ where: { userId, status: livePositionStatus } });
   const closed = [];
   for (const pos of positions) {
     closed.push(await closePosition({ userId, positionId: pos.id, reason: "KILL_SWITCH" }));

@@ -6,11 +6,14 @@ import { startUserDataStream, stopAllUserDataStreams, userStreamCount } from "..
 import { refreshPrecision, precisionCacheAge, PRECISION_TTL } from "../exchanges/binance/precision.js";
 import { exchangeReconciliationWorker } from "../trading/workers/ExchangeReconciliationWorker.js";
 import { notifyUser } from "../telegram/notify.js";
+import { sendDailyReportsIfDue } from "../telegram/dailyReport.js";
 import { bootLog } from "../bootLog.js";
+import { marketDataProvider, futuresMarketDataUrl } from "../market/MarketDataProvider.js";
 
 let scanTimer: NodeJS.Timeout | null = null;
 let posTimer: NodeJS.Timeout | null = null;
 let reconTimer: NodeJS.Timeout | null = null;
+let dailyTimer: NodeJS.Timeout | null = null;
 let started = false;
 let engineReady = false;
 let lastScanAt = 0;
@@ -71,7 +74,7 @@ async function recover() {
     if (u.accountLocked) {
       await notifyUser(
         u.id,
-        "⚠️ SynapseAI restarted.\nKill switch is ACTIVE.\nNew trades are blocked until /unlock."
+        "⚠️ SynapseAI перезапустился.\nЭкстренная остановка всё ещё активна.\nНовые сделки не открываются, пока вы не нажмёте /unlock."
       ).catch(() => undefined);
     }
   }
@@ -86,6 +89,10 @@ export function startTradingEngine() {
     return;
   }
   started = true;
+  if (process.env.MARKET_DATA_USE_TESTNET === "true") {
+    marketDataProvider.setMode("TESTNET");
+  }
+  bootLog(`[MARKET] Futures REST ${futuresMarketDataUrl()} (not Spot api.binance.com)`);
   posTimer = setInterval(() => {
     lastPosAt = Date.now();
     tradingOrchestrator.monitorPositions()
@@ -114,6 +121,11 @@ export function startTradingEngine() {
       .catch((err) => logger.error({ err }, "TradingWorker"));
   }, 30_000);
 
+  dailyTimer = setInterval(() => {
+    sendDailyReportsIfDue().catch((err) => logger.warn({ err }, "daily report"));
+  }, 15 * 60_000);
+  void sendDailyReportsIfDue().catch(() => undefined);
+
   void recover().catch((err) => {
     logger.error({ err }, "recovery failed — auto trading stays blocked");
     engineReady = false;
@@ -127,9 +139,11 @@ export async function stopTradingEngine() {
   if (scanTimer) clearInterval(scanTimer);
   if (posTimer) clearInterval(posTimer);
   if (reconTimer) clearInterval(reconTimer);
+  if (dailyTimer) clearInterval(dailyTimer);
   scanTimer = null;
   posTimer = null;
   reconTimer = null;
+  dailyTimer = null;
   stopAllUserDataStreams();
   await prisma.workerHealth.updateMany({ data: { status: "DOWN" } }).catch(() => undefined);
   logger.info("Workers stopped");

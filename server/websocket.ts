@@ -1,8 +1,9 @@
 import WebSocket from "ws";
-import { fetchBinanceKlines, type BinanceCandle } from "./binance.js";
+import { type BinanceCandle } from "./binance.js";
 import { logger } from "./logger.js";
 import { candleCache } from "./market/candleCache.js";
 import { computeImbalance, type DepthBook } from "./market/depth.js";
+import { marketDataProvider } from "./market/MarketDataProvider.js";
 
 export interface TickerUpdate {
   symbol: string;
@@ -45,14 +46,14 @@ class BinanceStreamManager {
     await Promise.all(
       SYMBOLS.map(async (sym) => {
         try {
-          const { candles } = await fetchBinanceKlines(sym.toUpperCase(), "1m", 120, false);
+          const candles = await marketDataProvider.fetchKlines({ symbol: sym.toUpperCase(), interval: "1m", limit: 120 });
           candleCache.replace(sym, candles);
         } catch (err) {
-          logger.warn({ err, sym }, "Не удалось загрузить историю свечей");
+          logger.warn({ err, sym }, "Failed to load candle history");
         }
       })
     );
-    logger.info("Кеш свечей прогрет (120 баров на символ)");
+    logger.info("Candle cache warmed (120 bars per symbol)");
   }
 
   private scheduleNotification() {
@@ -71,7 +72,7 @@ class BinanceStreamManager {
 
   private streamUrl() {
     const streams = SYMBOLS.flatMap((s) => [`${s}@ticker`, `${s}@kline_1m`, `${s}@depth10@100ms`]).join("/");
-    return `wss://stream.binance.com:9443/stream?streams=${streams}`;
+    return `wss://fstream.binance.com/stream?streams=${streams}`;
   }
 
   private connect() {
@@ -91,7 +92,7 @@ class BinanceStreamManager {
       this.ws.on("open", () => {
         this.isConnected = true;
         this.reconnectAttempt = 0;
-        logger.info("Binance WebSocket подключён (ticker + kline_1m + depth10)");
+        logger.info("Binance Futures WebSocket connected (ticker + kline_1m + depth10)");
       });
 
       this.ws.on("message", (data: WebSocket.Data) => {
@@ -120,11 +121,11 @@ class BinanceStreamManager {
 
       this.ws.on("close", () => {
         this.isConnected = false;
-        logger.warn("Binance WS отключён, reconnect с exponential backoff");
+        logger.warn("Binance WS disconnected, reconnect with exponential backoff");
         this.scheduleReconnect();
       });
     } catch (err) {
-      logger.warn({ err }, "Не удалось открыть Binance WS");
+      logger.warn({ err }, "Failed to open Binance WS");
       this.scheduleReconnect();
     }
   }

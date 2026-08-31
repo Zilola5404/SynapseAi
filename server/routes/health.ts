@@ -7,6 +7,8 @@ import { workerSnapshot, isEngineReady } from "../services/tradingEngine.js";
 import { userStreamCount } from "../market/userDataStream.js";
 import { pingFuturesRest } from "../exchanges/binance/futuresClient.js";
 import { telegramRuntime } from "../telegram/runtime.js";
+import { marketDataProvider, futuresMarketDataUrl } from "../market/MarketDataProvider.js";
+import { livePositionStatus } from "../trading/positionState.js";
 
 export const healthRouter = Router();
 
@@ -37,12 +39,14 @@ export async function systemSnapshot() {
   const workers = workerSnapshot();
   const telegram = Boolean(config.telegramBotToken);
   const ai = Boolean(config.geminiApiKey);
-  const binanceRest = await pingFuturesRest(true);
+  const binanceRest = await pingFuturesRest(false);
   return {
     postgres,
     redis,
     binanceRest,
     binanceWs: ws.connected,
+    marketDataHealthy: marketDataProvider.isHealthy(),
+    marketDataUrl: futuresMarketDataUrl(),
     telegram,
     telegramPolling: telegramRuntime.polling,
     telegramApi: telegramRuntime.apiReachable,
@@ -70,7 +74,7 @@ healthRouter.get("/ready", async (_req, res) => {
 healthRouter.get("/metrics", async (_req, res) => {
   const s = await systemSnapshot();
   const users = await prisma.user.count().catch(() => 0);
-  const open = await prisma.activePosition.count().catch(() => 0);
+  const open = await prisma.activePosition.count({ where: { status: livePositionStatus } }).catch(() => 0);
   const locked = await prisma.user.count({ where: { accountLocked: true } }).catch(() => 0);
   const lines = [
     `# HELP synapse_up 1 if process is up`,
@@ -80,6 +84,7 @@ healthRouter.get("/metrics", async (_req, res) => {
     `synapse_redis_up ${s.redis ? 1 : 0}`,
     `synapse_binance_rest_up ${s.binanceRest ? 1 : 0}`,
     `synapse_binance_ws_up ${s.binanceWs ? 1 : 0}`,
+    `synapse_market_data_up ${s.marketDataHealthy ? 1 : 0}`,
     `synapse_telegram_configured ${s.telegram ? 1 : 0}`,
     `synapse_telegram_polling ${s.telegramPolling ? 1 : 0}`,
     `synapse_ai_configured ${s.ai ? 1 : 0}`,

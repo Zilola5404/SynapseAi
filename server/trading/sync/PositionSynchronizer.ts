@@ -38,5 +38,5 @@ export async function syncAccountEquity(userId: string, equity: number) {
 }
 
 export async function alertManualClose(userId: string, symbol: string, reason: string) {
-  await notifyUser(userId, `📡 Exchange update: ${symbol} ${reason}`);
+  await notifyUser(userId, `📡 ${symbol}: сделка закрыта на бирже.`);
 }

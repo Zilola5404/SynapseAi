@@ -1,0 +1,33 @@
+export const ru = {
+  langName: "Русский",
+  reply: {
+    start: "▶️ Старт",
+    stop: "⏹ Стоп",
+    market: "📊 Рынок",
+    positions: "💼 Позиции",
+    history: "📜 История",
+    results: "💰 Результаты",
+    settings: "⚙️ Настройки",
+    help: "❓ Помощь",
+  },
+  commands: [
+    { command: "start", description: "Главное меню" },
+    { command: "menu", description: "Открыть меню" },
+    { command: "status", description: "Статус бота" },
+    { command: "positions", description: "Мои позиции" },
+    { command: "history", description: "История сделок" },
+    { command: "results", description: "Результаты" },
+    { command: "market", description: "Рынок" },
+    { command: "startbot", description: "Запустить автоторговлю" },
+    { command: "stop", description: "Остановить автоторговлю" },
+    { command: "settings", description: "Настройки" },
+    { command: "help", description: "Помощь" },
+    { command: "panic", description: "Экстренная остановка" },
+  ],
+  navBack: "⬅️ Назад",
+  navHome: "🏠 Главное меню",
+  connecting: "🤖 SynapseAI подключается...",
+  dbDown:
+    "⚠️ SynapseAI запущен, но база данных сейчас недоступна.\n\nТорговля выключена.\nОбратитесь к администратору.",
+  genericError: "⚠️ Не получилось выполнить действие. Попробуйте ещё раз.",
+};

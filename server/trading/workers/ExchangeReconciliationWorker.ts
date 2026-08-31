@@ -32,7 +32,7 @@ export class ExchangeReconciliationWorker {
       await equityForUser(user);
     } catch (err) {
       diffs.push(`equity failed: ${err instanceof Error ? err.message : err}`);
-      await notifyUser(userId, "⚠️ Reconciliation: не удалось прочитать equity с биржи.");
+      await notifyUser(userId, "⚠️ Не удалось прочитать баланс с биржи. Проверьте подключение позже.");
     }
 
     const critical = diffs.filter((d) => /missing|FLAT|failed/i.test(d));
@@ -43,7 +43,10 @@ export class ExchangeReconciliationWorker {
         action: "RECONCILE_WORKER",
         details: diffs.join("; "),
       });
-      await notifyUser(userId, `⚠️ <b>Reconciliation</b>\n\n${critical.slice(0, 6).join("\n")}`);
+      await notifyUser(
+        userId,
+        "⚠️ Не удалось полностью сверить сделки с биржей.\n\nНовые сделки могут быть на паузе. Если открытых позиций нет — просто подождите или напишите в поддержку."
+      );
     } else if (diffs.length) {
       await writeSystemLog({
         userId,

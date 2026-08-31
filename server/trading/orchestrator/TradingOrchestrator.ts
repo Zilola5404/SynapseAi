@@ -1,8 +1,14 @@
 import { prisma } from "../../db.js";
 import { logger } from "../../logger.js";
 import { writeSystemLog } from "../../services/logService.js";
-import { notifyUser } from "../../telegram/notify.js";
-import { scanUniverse } from "../../market/MarketScanner.js";
+import { notifyEvent, userLang } from "../../telegram/notify.js";
+import { tradeOpenedMessage, tradeClosedMessage, signalNotifyMessage } from "../../telegram/messages.js";
+import { friendlyError } from "../../telegram/ui/format.js";
+import { scanUniverse, snapshotFor } from "../../market/MarketScanner.js";
+import { marketDataProvider } from "../../market/MarketDataProvider.js";
+import { bootLog } from "../../bootLog.js";
+import { livePositionStatus } from "../positionState.js";
+import { SCAN_SYMBOLS } from "../types.js";
 import { strategyEngine } from "../strategy/StrategyEngine.js";
 import { evaluateRisk } from "../risk/RiskEngine.js";
 import { circuitStatus, tripCircuit, resetCircuit } from "../risk/CircuitBreaker.js";
@@ -151,6 +157,10 @@ export class TradingOrchestrator {
   }
 
   async scanOnce(userId: string) {
+    if (!marketDataProvider.isHealthy()) {
+      logger.warn("[AUTO] Market data DEGRADED — scan skipped");
+      return [{ symbol: "*", action: "HOLD" as const, reason: "MARKET_DATA_DEGRADED" }];
+    }
     const user = await prisma.user.findUnique({ where: { id: userId } });
     const rows = await scanUniverse();
     const allowed =
@@ -158,8 +168,8 @@ export class TradingOrchestrator {
     const results = [];
     for (const row of rows) {
       if (allowed && !allowed.has(row.symbol)) continue;
-      if (!row.h1 || !row.m15 || !row.m5) {
-        results.push({ symbol: row.symbol, action: "HOLD", reason: "мало данных" });
+      if (!row.marketDataOk || !row.h1 || !row.m15 || !row.m5) {
+        results.push({ symbol: row.symbol, action: "HOLD", reason: "NO_MARKET_DATA" });
         continue;
       }
       const signal = strategyEngine.evaluate(row.h1, row.m15, row.m5);
@@ -191,12 +201,18 @@ export class TradingOrchestrator {
       const user = await prisma.user.findUnique({ where: { id: userId }, include: { riskSettings: true } });
       if (!user?.riskSettings) throw new Error("Нет профиля риска");
 
-      const dup = await prisma.activePosition.findUnique({
-        where: { userId_symbol: { userId, symbol: signal.symbol } },
-      }).catch(async () =>
-        prisma.activePosition.findFirst({ where: { userId, symbol: signal.symbol } })
-      );
-      if (dup) throw new Error(`По ${signal.symbol} уже есть позиция`);
+      if (!marketDataProvider.isHealthy()) {
+        logger.warn({ symbol: signal.symbol }, "[AUTO] Market data DEGRADED — no trade");
+        throw new Error("MARKET DATA DEGRADED — no new trades");
+      }
+
+      const dup = await prisma.activePosition.findFirst({
+        where: { userId, symbol: signal.symbol, status: livePositionStatus },
+      });
+      if (dup) {
+        logger.info({ symbol: signal.symbol }, "[AUTO] Existing position: YES");
+        throw new Error(`${signal.symbol} already has an OPEN position`);
+      }
 
       const tracked = await createTrackedOrder({
         userId,
@@ -211,6 +227,7 @@ export class TradingOrchestrator {
       await transitionOrder(tracked.id, "VALIDATED");
 
       const ai = await filterSignal(signal);
+      logger.info({ symbol: signal.symbol, pass: ai.pass, note: ai.note }, `[AI] ${ai.pass ? "APPROVED" : "REJECTED"}`);
       if (!ai.pass) {
         await transitionOrder(tracked.id, "REJECTED", { lastError: ai.note });
         throw new Error(`AI filter: ${ai.note}`);
@@ -218,7 +235,7 @@ export class TradingOrchestrator {
 
       const circuit = await circuitStatus(userId);
       const equity = await equityForUser(user);
-      const open = await prisma.activePosition.findMany({ where: { userId, status: "OPEN" } });
+      const open = await prisma.activePosition.findMany({ where: { userId, status: livePositionStatus } });
       const exposure = open.reduce((s, p) => s + p.sizeUsdt, 0);
       const pnl24 = await realizedPnl24h(userId);
       const risk = evaluateRisk({
@@ -234,14 +251,24 @@ export class TradingOrchestrator {
         circuitReason: circuit.reason,
       });
       if (!risk.allowed) {
+        logger.info({ symbol: signal.symbol, reason: risk.reason }, "[RISK] REJECTED");
         await transitionOrder(tracked.id, "REJECTED", { lastError: risk.reason });
         await writeSystemLog({ userId, level: "RISK_WARN", pair: signal.symbol, action: "RISK_REJECT", details: risk.reason || "" });
-        if (risk.reason?.includes("Дневной лимит")) {
-          await notifyUser(userId, "⚠️ <b>DAILY RISK LIMIT REACHED</b>\n\nNew trading disabled.");
+        if (risk.reason?.includes("Дневной лимит") || /daily/i.test(risk.reason || "")) {
+          const lang = await userLang(userId);
+          await notifyEvent(
+            userId,
+            "risk",
+            lang === "en"
+              ? "⚠️ The daily loss limit has been reached.\n\nNew trades are paused until tomorrow."
+              : "⚠️ Достигнут дневной лимит убытка.\n\nНовые сделки сегодня не открываются."
+          );
         }
         throw new Error(risk.reason);
       }
       await transitionOrder(tracked.id, "RISK_APPROVED");
+      logger.info({ symbol: signal.symbol, sizeUsdt: risk.sizeUsdt, qty: risk.quantity, leverage: risk.leverage }, "[RISK] APPROVED");
+      logger.info({ symbol: signal.symbol, mode: user.tradingMode }, `[EXECUTION] ${user.tradingMode}`);
 
       const exec = await providerFor(user);
       if (exec instanceof BinanceExecution) {
@@ -362,9 +389,11 @@ export class TradingOrchestrator {
             reason: "TP confirmed on exchange",
           });
           await transitionOrder(tracked.id, "PROTECTED");
+          logger.info({ symbol: signal.symbol, sl: prot.slOrderId, tp: prot.tpOrderId }, "[PROTECTION] SL/TP verified");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logger.error({ err: message, pos: pos.id }, "PROTECTION FAILURE");
+          const lang = await userLang(userId);
           await writeSystemLog({
             userId,
             level: "ERROR",
@@ -372,9 +401,12 @@ export class TradingOrchestrator {
             action: "PROTECTION_FAILURE",
             details: message,
           });
-          await notifyUser(
+          await notifyEvent(
             userId,
-            `🚨 <b>CRITICAL PROTECTION FAILURE</b>\nPosition was closed for safety.\n\n${signal.symbol}`
+            "system",
+            lang === "en"
+              ? `🚨 Protection could not be set.\nThe trade was closed for safety.\n\n${signal.symbol}`
+              : `🚨 Не удалось поставить защиту сделки.\nСделка закрыта из соображений безопасности.\n\n${signal.symbol}`
           );
           try {
             await exec.cancelAllOrders?.(signal.symbol);
@@ -395,9 +427,12 @@ export class TradingOrchestrator {
               action: "PROTECTION_FAILURE_NOT_FLAT",
               details: "Emergency close did not flatten exchange position",
             });
-            await notifyUser(
+            await notifyEvent(
               userId,
-              `🚨 <b>CRITICAL</b>\n\n${signal.symbol} still OPEN on exchange after protection failure.\nAuto trading is LOCKED.`
+              "system",
+              lang === "en"
+                ? `🚨 ${signal.symbol} may still be open on the exchange.\nAuto trading is locked. Use /unlock after checking.`
+                : `🚨 ${signal.symbol} может быть ещё открыт на бирже.\nАвтоторговля заблокирована. После проверки нажмите /unlock.`
             );
             try {
               const still = await prisma.activePosition.findFirst({ where: { id: pos.id } });
@@ -427,18 +462,37 @@ export class TradingOrchestrator {
             data: { autoTradeEnabled: false, scannerEnabled: false, accountLocked: true },
           });
           await prisma.riskSettings.updateMany({ where: { userId }, data: { emergencyKillSwitch: true } });
-          await notifyUser(userId, "🔒 Auto trading LOCKED after protection failure. /unlock after review.");
+          await notifyEvent(
+            userId,
+            "system",
+            lang === "en"
+              ? "🔒 Auto trading is locked after a protection problem. Use /unlock after you review."
+              : "🔒 Автоторговля заблокирована после сбоя защиты. После проверки нажмите /unlock."
+          );
           throw new Error(`PROTECTION FAILURE: ${message}`);
         }
       }
 
       if (fill.isPaper) {
+        logger.info({ symbol: signal.symbol, sl: signal.stopLoss, tp: signal.takeProfit }, "[PROTECTION] SL/TP verified");
         await prisma.user.update({
           where: { id: userId },
           data: { paperBalanceUsdt: { decrement: risk.marginUsdt } },
         });
       }
 
+      logger.info(
+        {
+          symbol: signal.symbol,
+          side: signal.direction,
+          entry: fill.fillPrice,
+          sl: signal.stopLoss,
+          tp: signal.takeProfit,
+          sizeUsdt: risk.sizeUsdt,
+          fees: fill.feesUsdt,
+        },
+        "[POSITION] OPENED"
+      );
       await writeSystemLog({
         userId,
         level: "TRADE",
@@ -447,9 +501,18 @@ export class TradingOrchestrator {
         details: `${signal.direction} ${signal.symbol} @ ${fill.fillPrice} qty=${fill.quantity} fees=${fill.feesUsdt} SL ${signal.stopLoss} TP ${signal.takeProfit}`,
         confidence: signal.confidence,
       });
-      await notifyUser(
+      const lang = await userLang(userId);
+      await notifyEvent(
         userId,
-        `🟢 <b>Position Opened</b>\n\n${signal.symbol} ${signal.direction}\nEntry: $${fill.fillPrice}\nStop: $${signal.stopLoss}\nTarget: $${signal.takeProfit}\nFees: $${fill.feesUsdt.toFixed(4)}\nMode: ${fill.isPaper ? "PAPER" : user.tradingMode}`
+        "trade_open",
+        tradeOpenedMessage(lang, {
+          symbol: signal.symbol,
+          side: signal.direction,
+          entry: fill.fillPrice,
+          sl: signal.stopLoss,
+          tp: signal.takeProfit,
+          auto: source === "auto",
+        })
       );
       return pos;
     });
@@ -458,8 +521,9 @@ export class TradingOrchestrator {
   async closePosition(userId: string, positionId: string, reason: string) {
     const pos = await prisma.activePosition.findFirst({ where: { id: positionId, userId } });
     if (!pos) return null;
+    if (pos.status === "CLOSED") return null;
     if (pos.status === "CLOSING" && pos.closeRequestedAt && Date.now() - pos.closeRequestedAt.getTime() < 15_000) {
-      throw new Error("Закрытие уже выполняется");
+      throw new Error("Close already in progress");
     }
 
     await prisma.activePosition.update({
@@ -532,12 +596,19 @@ export class TradingOrchestrator {
         action: "CLOSE_FAILED",
         details: message,
       });
-      await notifyUser(userId, `⚠️ Не удалось закрыть ${pos.symbol}: ${message}\nПозиция остаётся OPEN.`);
+      const lang = await userLang(userId);
+      await notifyEvent(userId, "system", friendlyError(message, lang));
       throw err;
     }
   }
 
   async finalizeClose(pos: ActivePosition, exitPrice: number, feesUsdt: number, reason: string) {
+    const current = await prisma.activePosition.findUnique({ where: { id: pos.id } });
+    if (!current || current.status === "CLOSED") {
+      logger.info({ id: pos.id, symbol: pos.symbol }, "[POSITION] already CLOSED — skip duplicate finalize");
+      return null;
+    }
+
     const isLong = pos.side === "LONG";
     const diff = isLong ? exitPrice - pos.entryPrice : pos.entryPrice - exitPrice;
     const pnlGross = (diff / pos.entryPrice) * (pos.entryPrice * pos.quantity);
@@ -572,7 +643,22 @@ export class TradingOrchestrator {
       where: { id: pos.id },
       data: { status: "CLOSED", closedAt: new Date() },
     }).catch(() => undefined);
-    await prisma.activePosition.delete({ where: { id: pos.id } }).catch(() => undefined);
+
+    const slPct = pos.entryPrice > 0 ? (Math.abs(pos.entryPrice - pos.stopLossPrice) / pos.entryPrice) * 100 : 0;
+    const riskAmt = pos.sizeUsdt * (slPct / 100);
+    logger.info(
+      {
+        symbol: pos.symbol,
+        reason,
+        sizeUsdt: pos.sizeUsdt,
+        slPct: Number(slPct.toFixed(3)),
+        approxRiskUsdt: Number(riskAmt.toFixed(2)),
+        fees: feesUsdt,
+        pnl: Number(pnl.toFixed(2)),
+        feeShareOfLoss: pnl < 0 && Math.abs(pnl) > 0 ? Number((feesUsdt / Math.abs(pnl)).toFixed(3)) : 0,
+      },
+      "[POSITION] CLOSED"
+    );
 
     const user = await prisma.user.findUnique({ where: { id: pos.userId } });
     if (pos.isPaperTrade && user) {
@@ -589,12 +675,23 @@ export class TradingOrchestrator {
           scannerEnabled: losses >= 3 ? false : user.scannerEnabled,
         },
       });
-      if (losses >= 3) await notifyUser(pos.userId, "⚠️ 3 убытка подряд. Торговля на паузе 1 час.");
+      if (losses >= 3) {
+        const pauseLang = await userLang(pos.userId);
+        await notifyEvent(
+          pos.userId,
+          "risk",
+          pauseLang === "en"
+            ? "⚠️ Three losses in a row. Trading is paused for 1 hour."
+            : "⚠️ Три убытка подряд. Торговля на паузе 1 час."
+        );
+      }
     }
 
-    await notifyUser(
+    const closeLang = await userLang(pos.userId);
+    await notifyEvent(
       pos.userId,
-      `🔴 <b>Position Closed</b>\n\n${pos.symbol}\nPnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}\nFees: $${feesUsdt.toFixed(4)}\nReason: ${reason}`
+      "trade_close",
+      tradeClosedMessage(closeLang, { symbol: pos.symbol, pnl, fees: feesUsdt, reason })
     );
     await writeSystemLog({
       userId: pos.userId,
@@ -621,28 +718,66 @@ export class TradingOrchestrator {
   }
 
   async runAutoCycle() {
+    bootLog("[AUTO] Cycle started");
+    logger.info("[AUTO] Cycle started");
+    if (!marketDataProvider.isHealthy()) {
+      logger.warn("[AUTO] Market data DEGRADED — skip new trades");
+      return;
+    }
     const users = await prisma.user.findMany({
       where: { autoTradeEnabled: true, scannerEnabled: true, accountLocked: false },
       include: { riskSettings: true },
     });
     for (const user of users) {
+      logger.info({ userId: user.id, mode: user.tradingMode }, "[AUTO] User eligible");
       const circuit = await circuitStatus(user.id);
-      if (circuit.open) continue;
+      if (circuit.open) {
+        logger.info({ reason: circuit.reason }, "[AUTO] User skipped — circuit open");
+        continue;
+      }
       try {
-        const scan = await this.scanOnce(user.id);
-        const best = scan
-          .filter((s) => s.signal)
-          .sort((a, b) => (b.signal?.confidence || 0) - (a.signal?.confidence || 0))[0];
+        const openRows = await prisma.activePosition.findMany({
+          where: { userId: user.id, status: livePositionStatus },
+        });
+        const openSet = new Set(openRows.map((p) => p.symbol));
+        const allowed = user.tradingMode === "LIVE" ? new Set(["BTCUSDT", "ETHUSDT"]) : null;
+        const candidates: { symbol: string; signal: StrategySignal }[] = [];
+
+        for (const symbol of SCAN_SYMBOLS) {
+          if (allowed && !allowed.has(symbol)) continue;
+          logger.info({ symbol }, `[AUTO] ${symbol} scanning`);
+          const existing = openSet.has(symbol);
+          logger.info({ symbol, existing }, `[AUTO] Existing position: ${existing ? "YES" : "NO"}`);
+          if (existing) continue;
+
+          const snap = await snapshotFor(symbol);
+          logger.info({ symbol, ok: snap.marketDataOk }, `[AUTO] Market data: ${snap.marketDataOk ? "OK" : "UNAVAILABLE"}`);
+          if (!snap.marketDataOk || !snap.h1 || !snap.m15 || !snap.m5) {
+            logger.info({ symbol }, "[AUTO] SKIP SYMBOL — no market data, no trade");
+            continue;
+          }
+          const signal = strategyEngine.evaluate(snap.h1, snap.m15, snap.m5);
+          logger.info({ symbol, action: signal?.direction || "NONE" }, `[AUTO] Signal: ${signal?.direction || "NONE"}`);
+          if (signal) candidates.push({ symbol, signal });
+        }
+
+        const best = candidates.sort((a, b) => (b.signal.confidence || 0) - (a.signal.confidence || 0))[0];
         if (best?.signal) {
-          await notifyUser(
+          const lang = await userLang(user.id);
+          await notifyEvent(
             user.id,
-            `🔍 <b>New Trading Opportunity</b>\n\n${best.signal.symbol} ${best.signal.direction}\nConfidence: ${best.signal.confidence}%`
+            "signal",
+            signalNotifyMessage(lang, {
+              symbol: best.signal.symbol,
+              direction: best.signal.direction,
+              confidence: best.signal.confidence,
+            })
           );
           await this.openFromSignal(user.id, best.signal, "auto");
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        logger.warn({ err: message, userId: user.id }, "auto cycle");
+        logger.warn({ err: message, userId: user.id }, "[AUTO] cycle error");
         if (/timeout|unavailable|429/i.test(message)) {
           await tripCircuit(user.id, message);
         }
@@ -652,6 +787,7 @@ export class TradingOrchestrator {
 
   async monitorPositions() {
     const positions = await prisma.activePosition.findMany({
+      where: { status: livePositionStatus },
       include: { user: { include: { riskSettings: true } } },
     });
     for (const pos of positions) {
@@ -810,7 +946,9 @@ export class TradingOrchestrator {
     reduceOnly?: boolean;
     orderId?: string;
   }) {
-    const pos = await prisma.activePosition.findFirst({ where: { userId: params.userId, symbol: params.symbol } });
+    const pos = await prisma.activePosition.findFirst({
+      where: { userId: params.userId, symbol: params.symbol, status: { not: "CLOSED" } },
+    });
     if (!pos) return;
     if (params.reduceOnly || (params.realizedPnl !== undefined && params.realizedPnl !== 0)) {
       const still = Math.abs(pos.quantity - params.qty) < 1e-8 || params.reduceOnly;
@@ -825,10 +963,6 @@ export class TradingOrchestrator {
             return;
           }
         }
-        await prisma.activePosition.update({
-          where: { id: pos.id },
-          data: { status: "CLOSED", closedAt: new Date() },
-        }).catch(() => undefined);
         await this.finalizeClose(
           pos,
           params.avgPrice || pos.currentPrice,
@@ -869,7 +1003,14 @@ export class TradingOrchestrator {
       const known = db.find((p) => p.symbol === row.symbol);
       if (!known) {
         diffs.push(`Exchange open ${row.symbol} qty=${row.positionAmt}, missing in DB`);
-        await notifyUser(userId, `⚠️ Reconciliation: на бирже открыт ${row.symbol}, в SynapseAI нет записи.`);
+        const recLang = await userLang(userId);
+        await notifyEvent(
+          userId,
+          "system",
+          recLang === "en"
+            ? `⚠️ ${row.symbol} is open on the exchange, but SynapseAI has no matching trade record.`
+            : `⚠️ На бирже открыт ${row.symbol}, но в SynapseAI нет такой сделки.`
+        );
       }
     }
     if (diffs.length) {

@@ -3,6 +3,7 @@ import { notifyUser } from "../telegram/notify.js";
 import { syncOrderFromExchange } from "../trading/sync/OrderSynchronizer.js";
 import { alertManualClose, syncAccountEquity, syncFillFromExchange } from "../trading/sync/PositionSynchronizer.js";
 import { prisma } from "../db.js";
+import { livePositionStatus } from "../trading/positionState.js";
 
 export async function handleBinanceUserEvent(userId: string, msg: any) {
   if (msg.e === "ORDER_TRADE_UPDATE") {
@@ -36,17 +37,21 @@ export async function handleBinanceUserEvent(userId: string, msg: any) {
         clientOrderId,
         execType,
       });
-      const pos = await prisma.activePosition.findFirst({ where: { userId, symbol } });
+      const pos = await prisma.activePosition.findFirst({
+        where: { userId, symbol, status: livePositionStatus },
+      });
       if (reduceOnly && pos) {
-        const why = pos.slOrderId === orderId ? "SL filled" : pos.tpOrderId === orderId ? "TP filled" : "reduce fill";
-        await notifyUser(userId, `📡 ${symbol}: ${why}`);
+        logger.info({ userId, symbol, orderId }, "reduce-only fill on live position");
       }
     }
     if (status === "CANCELED" || execType === "CANCELED") {
       logger.info({ userId, symbol, orderId }, "order cancelled on exchange");
     }
     if (status === "EXPIRED" || status === "REJECTED") {
-      await notifyUser(userId, `⚠️ ${symbol} order ${status}`);
+      await notifyUser(
+        userId,
+        `⚠️ Заявка по ${symbol} не исполнена.\nСистема попробует обработать это автоматически.`
+      );
     }
   }
 
@@ -63,7 +68,9 @@ export async function handleBinanceUserEvent(userId: string, msg: any) {
       const amt = parseFloat(p.pa || "0");
       const symbol = String(p.s || "");
       if (!symbol) continue;
-      const db = await prisma.activePosition.findFirst({ where: { userId, symbol, isPaperTrade: false } });
+      const db = await prisma.activePosition.findFirst({
+        where: { userId, symbol, isPaperTrade: false, status: livePositionStatus },
+      });
       if (db && Math.abs(amt) < 1e-8) {
         await alertManualClose(userId, symbol, "position flat on exchange (ACCOUNT_UPDATE)");
       }

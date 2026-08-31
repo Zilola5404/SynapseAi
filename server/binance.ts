@@ -113,31 +113,10 @@ export async function fetchBinanceKlines(
   symbol: string = 'BTCUSDT',
   interval: string = '5m',
   limit: number = 100,
-  isTestnet: boolean = false
+  _isTestnet: boolean = false
 ): Promise<{ candles: BinanceCandle[]; indicators: TechnicalIndicators }> {
-  const baseUrl = getBinanceBaseUrl(isTestnet, false);
-  const cleanSymbol = symbol.replace('/', '').toUpperCase();
-  const url = `${baseUrl}/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`;
-
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'SynapseCryptoAI/1.0' },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Binance Klines HTTP Error: ${res.status} ${res.statusText}`);
-  }
-
-  const rawData = await res.json();
-  const candles: BinanceCandle[] = rawData.map((k: any) => ({
-    openTime: k[0],
-    open: parseFloat(k[1]),
-    high: parseFloat(k[2]),
-    low: parseFloat(k[3]),
-    close: parseFloat(k[4]),
-    volume: parseFloat(k[5]),
-    closeTime: k[6],
-  }));
-
+  const { marketDataProvider } = await import("./market/MarketDataProvider.js");
+  const candles = await marketDataProvider.fetchKlines({ symbol, interval, limit });
   const indicators = calculateIndicators(candles);
   return { candles, indicators };
 }
