@@ -6,9 +6,11 @@ import { signAccessToken } from "../auth/jwt.js";
 const DEFAULT_RISK = {
   maxDailyLossPct: 3,
   maxDrawdownPct: 8,
-  maxPositionSizePct: 5,
-  maxLeverage: 10,
+  maxPositionSizePct: 10,
+  maxLeverage: 3,
   maxOpenPositions: 3,
+  riskPerTradePct: 0.5,
+  maxExposurePct: 30,
   defaultStopLossPct: 2,
   defaultTakeProfitPct: 5,
   enableTrailingStop: true,

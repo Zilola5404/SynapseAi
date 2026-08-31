@@ -16,6 +16,17 @@ export const AIDecisionModal: React.FC<AIDecisionModalProps> = ({
   onExecuteTrade,
 }) => {
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'NEWS' | 'RISK' | 'HISTORY'>('OVERVIEW');
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(true);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setIsAnalyzing(true);
+      const timer = setTimeout(() => {
+        setIsAnalyzing(false);
+      }, 900);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, asset.symbol]);
 
   if (!isOpen) return null;
 
@@ -77,32 +88,45 @@ export const AIDecisionModal: React.FC<AIDecisionModalProps> = ({
         </div>
 
         {/* Confidence Banner */}
-        <div className="bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-transparent border border-cyan-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="space-y-1">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-300">Рекомендация ИИ:</span>
-            <div className="flex items-center gap-2">
-              <span className={`text-base font-extrabold px-3 py-1 rounded-lg border ${
-                isLong ? 'bg-green-500/20 text-green-300 border-green-500/40' : 'bg-red-500/20 text-red-300 border-red-500/40'
-              }`}>
-                {recommendation}
-              </span>
-              <span className="text-sm font-bold text-white font-mono">${asset.price.toLocaleString()}</span>
-            </div>
-          </div>
-
-          <div className="text-right space-y-1">
-            <span className="text-[10px] text-neutral-400 block">AI Confidence Score (Уверенность):</span>
-            <div className="flex items-center gap-2">
-              <div className="w-24 bg-black/50 h-3 rounded-full overflow-hidden border border-white/10">
-                <div
-                  className="bg-gradient-to-r from-cyan-400 to-green-400 h-full"
-                  style={{ width: `${confidence}%` }}
-                />
+        {isAnalyzing ? (
+          <div className="bg-cyan-500/10 border border-cyan-500/40 rounded-xl p-4 flex items-center justify-between gap-3 font-mono animate-pulse">
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-5 h-5 text-cyan-400 animate-spin" />
+              <div>
+                <div className="text-xs font-bold text-cyan-300">SYNAPSE NEURAL SCANNING...</div>
+                <div className="text-[10px] text-neutral-400">Scanning 12,542 order books & sentiment signals for {asset.symbol}</div>
               </div>
-              <span className="text-sm font-bold text-cyan-300 font-mono">{confidence}%</span>
+            </div>
+            <span className="text-xs text-cyan-400 font-bold">88% Ready</span>
+          </div>
+        ) : (
+          <div className="bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-transparent border border-cyan-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-300">Рекомендация ИИ:</span>
+              <div className="flex items-center gap-2">
+                <span className={`text-base font-extrabold px-3 py-1 rounded-lg border ${
+                  isLong ? 'bg-green-500/20 text-green-300 border-green-500/40' : 'bg-red-500/20 text-red-300 border-red-500/40'
+                }`}>
+                  {recommendation}
+                </span>
+                <span className="text-sm font-bold text-white font-mono">${asset.price.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="text-right space-y-1">
+              <span className="text-[10px] text-neutral-400 block">AI Confidence Score (Уверенность):</span>
+              <div className="flex items-center gap-2">
+                <div className="w-24 bg-black/50 h-3 rounded-full overflow-hidden border border-white/10">
+                  <div
+                    className="bg-gradient-to-r from-cyan-400 to-green-400 h-full"
+                    style={{ width: `${confidence}%` }}
+                  />
+                </div>
+                <span className="text-sm font-bold text-cyan-300 font-mono">{confidence}%</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-white/10 pb-2">

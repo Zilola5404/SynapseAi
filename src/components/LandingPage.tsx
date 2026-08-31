@@ -21,17 +21,23 @@ import {
   Users
 } from 'lucide-react';
 import { CryptoAsset } from '../types';
+import { AICore3D } from './AICore3D';
+import { AIStatusBanner } from './AIStatusBanner';
 
 interface LandingPageProps {
   onOpenAuth: (mode: 'login' | 'register') => void;
   onOpenDemoDashboard: () => void;
   assets: CryptoAsset[];
+  onOpenLegalDoc?: (doc: 'privacy' | 'cookies' | 'terms' | 'risk-disclaimer' | 'security') => void;
+  onOpenCookiePreferences?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenAuth,
   onOpenDemoDashboard,
   assets,
+  onOpenLegalDoc,
+  onOpenCookiePreferences,
 }) => {
   const [selectedDemoSymbol, setSelectedDemoSymbol] = useState<string>('BTC/USDT');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
@@ -71,34 +77,37 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   ];
 
   return (
-    <div className="min-h-screen bg-[#07080a] text-neutral-100 font-sans selection:bg-green-500 selection:text-black">
+    <div className="min-h-screen bg-[#05070d] text-neutral-100 font-sans selection:bg-cyan-500 selection:text-black">
+      {/* Institutional AI Status Live Ticker Banner */}
+      <AIStatusBanner />
+
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-[#07080a]/80 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 2xl:px-12 py-3.5 2xl:py-5">
+      <header className="sticky top-0 z-40 bg-[#05070d]/90 backdrop-blur-2xl border-b border-white/10 px-4 sm:px-8 2xl:px-12 py-3.5 2xl:py-5">
         <div className="max-w-7xl 2xl:max-w-[1700px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 2xl:w-12 2xl:h-12 rounded-xl bg-gradient-to-tr from-green-600 to-emerald-400 flex items-center justify-center shadow-lg shadow-green-500/20">
-              <Bot className="w-6 h-6 2xl:w-7 2xl:h-7 text-black font-bold" />
+            <div className="w-10 h-10 2xl:w-12 2xl:h-12 rounded-xl bg-gradient-to-tr from-cyan-500 via-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+              <Bot className="w-6 h-6 2xl:w-7 2xl:h-7 text-black font-extrabold" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xl 2xl:text-2xl font-black tracking-tight text-white">
-                  SYNAPSE <span className="text-green-500">AI</span>
+                  SYNAPSE <span className="text-cyan-400">AI</span>
                 </span>
-                <span className="text-[10px] 2xl:text-xs px-2.5 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/30 font-mono">
-                  v3.6 SaaS
+                <span className="text-[10px] 2xl:text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-mono">
+                  PRO MAX v3.6
                 </span>
               </div>
-              <span className="text-[11px] 2xl:text-xs text-neutral-400 hidden sm:block">Crypto Intelligence Platform</span>
+              <span className="text-[11px] 2xl:text-xs text-neutral-400 hidden sm:block">Institutional Crypto Intelligence Platform</span>
             </div>
           </div>
 
           <nav className="hidden md:flex items-center gap-6 2xl:gap-10 text-xs 2xl:text-base font-semibold text-neutral-300">
-            <a href="#security" className="hover:text-green-400 transition-colors">Безопасность</a>
-            <a href="#demo" className="hover:text-green-400 transition-colors">AI Демо Signal</a>
-            <a href="#features" className="hover:text-green-400 transition-colors">Возможности</a>
-            <a href="#beta" className="hover:text-green-400 transition-colors">Beta-Программа</a>
-            <a href="#pricing" className="hover:text-green-400 transition-colors">Тарифы</a>
-            <a href="#faq" className="hover:text-green-400 transition-colors">FAQ</a>
+            <a href="#security" className="hover:text-cyan-400 transition-colors">Безопасность</a>
+            <a href="#demo" className="hover:text-cyan-400 transition-colors">AI Демо Signal</a>
+            <a href="#features" className="hover:text-cyan-400 transition-colors">Возможности</a>
+            <a href="#beta" className="hover:text-cyan-400 transition-colors">Beta-Программа</a>
+            <a href="#pricing" className="hover:text-cyan-400 transition-colors">Тарифы</a>
+            <a href="#faq" className="hover:text-cyan-400 transition-colors">FAQ</a>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -110,7 +119,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </button>
             <button
               onClick={() => onOpenAuth('register')}
-              className="px-4 py-2 2xl:px-6 2xl:py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black font-extrabold rounded-xl text-xs 2xl:text-sm shadow-lg shadow-green-500/20 transition-all flex items-center gap-2"
+              className="px-4 py-2 2xl:px-6 2xl:py-3 bg-gradient-to-r from-cyan-500 via-emerald-500 to-teal-400 hover:from-cyan-400 hover:to-emerald-400 text-black font-extrabold rounded-xl text-xs 2xl:text-sm shadow-xl shadow-cyan-500/25 transition-all flex items-center gap-2"
             >
               <span>Запустить AI</span>
               <ArrowRight className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
@@ -119,87 +128,91 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative pt-12 2xl:pt-20 pb-20 2xl:pb-32 px-4 sm:px-8 2xl:px-12 overflow-hidden">
+      {/* Hero Section with Integrated 3D AI Core */}
+      <section className="relative pt-8 2xl:pt-16 pb-20 2xl:pb-32 px-4 sm:px-8 2xl:px-12 overflow-hidden bg-[#05070d]">
         {/* Glow Effects */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] 2xl:w-[900px] h-[300px] 2xl:h-[450px] bg-green-500/10 rounded-full blur-[140px] pointer-events-none" />
-        <div className="absolute top-10 right-10 w-96 2xl:w-[500px] h-96 2xl:h-[500px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[700px] 2xl:w-[1000px] h-[350px] 2xl:h-[500px] bg-cyan-500/10 rounded-full blur-[160px] pointer-events-none" />
+        <div className="absolute top-10 right-10 w-96 2xl:w-[500px] h-96 2xl:h-[500px] bg-emerald-500/5 rounded-full blur-[140px] pointer-events-none" />
 
-        <div className="max-w-5xl 2xl:max-w-7xl 3xl:max-w-[1700px] mx-auto text-center relative z-10 space-y-6 2xl:space-y-10">
-          <div className="inline-flex items-center gap-2 px-4 py-2 2xl:px-5 2xl:py-2.5 rounded-full bg-white/5 border border-white/10 text-xs 2xl:text-sm font-mono text-green-400 shadow-xl">
-            <Sparkles className="w-4 h-4 2xl:w-5 2xl:h-5 text-green-400 animate-pulse" />
-            <span>INSTITUTIONAL CRYPTO INTELLIGENCE PLATFORM v3.6</span>
+        <div className="max-w-7xl 2xl:max-w-[1700px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center relative z-10">
+          {/* Left Hero Column */}
+          <div className="lg:col-span-7 text-left space-y-6 2xl:space-y-8">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-xs 2xl:text-sm font-mono text-cyan-300 shadow-xl">
+              <Sparkles className="w-4 h-4 2xl:w-5 2xl:h-5 text-cyan-400 animate-pulse" />
+              <span>THE AI INTELLIGENCE LAYER FOR DIGITAL ASSETS</span>
+            </div>
+
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl 2xl:text-7xl font-black text-white tracking-tight leading-[1.12]">
+              Ваш персональный AI-центр управления{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-emerald-300 to-teal-300">
+                криптоактивами
+              </span>
+            </h1>
+
+            <p className="text-sm sm:text-lg 2xl:text-xl text-neutral-300 max-w-2xl leading-relaxed">
+              Synapse AI анализирует рынок, стаканы ордеров и ваш портфель в реальном времени. Без прямого доступа к выводу средств через <span className="text-white font-semibold underline decoration-cyan-500/50">Binance Read-Only API</span>.
+            </p>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-center gap-4">
+              <button
+                onClick={() => onOpenAuth('register')}
+                className="w-full sm:w-auto px-8 py-4 2xl:px-10 2xl:py-5 bg-gradient-to-r from-cyan-500 via-emerald-500 to-teal-400 hover:from-cyan-400 hover:to-emerald-400 text-black font-extrabold text-base 2xl:text-lg rounded-2xl shadow-2xl shadow-cyan-500/30 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-3 cursor-pointer"
+              >
+                <span>Подключить AI Бесплатно</span>
+                <ArrowRight className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={onOpenDemoDashboard}
+                className="w-full sm:w-auto px-6 py-4 2xl:px-8 2xl:py-5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/15 text-white font-bold text-sm 2xl:text-base rounded-2xl backdrop-blur-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+              >
+                <Eye className="w-4 h-4 text-cyan-400" />
+                <span>Открыть Live Dashboard</span>
+              </button>
+            </div>
+
+            {/* Micro Live AI Indicators */}
+            <div className="pt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
+              <div className="p-3 rounded-xl bg-white/[0.02] border border-white/10 backdrop-blur-md">
+                <div className="text-[10px] text-neutral-400 font-mono">SCANNED ASSETS</div>
+                <div className="text-sm font-extrabold text-white font-mono mt-0.5">12,542 Live</div>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.02] border border-white/10 backdrop-blur-md">
+                <div className="text-[10px] text-neutral-400 font-mono">LATENCY</div>
+                <div className="text-sm font-extrabold text-green-400 font-mono mt-0.5">&lt; 32 ms</div>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.02] border border-white/10 backdrop-blur-md">
+                <div className="text-[10px] text-neutral-400 font-mono">ACCURACY RATE</div>
+                <div className="text-sm font-extrabold text-cyan-300 font-mono mt-0.5">84.6% Avg</div>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.02] border border-white/10 backdrop-blur-md">
+                <div className="text-[10px] text-neutral-400 font-mono">SECURITY</div>
+                <div className="text-sm font-extrabold text-amber-300 font-mono mt-0.5">AES-256 KMS</div>
+              </div>
+            </div>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl 2xl:text-7xl 3xl:text-8xl font-black text-white tracking-tight leading-[1.12]">
-            Интеллектуальный AI-анализ криптоактивов и{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 via-emerald-300 to-teal-400">
-              управление рисками
-            </span>
-          </h1>
+          {/* Right Hero Column: Interactive 3D AI Core Canvas & Live Scanning Terminal */}
+          <div className="lg:col-span-5 flex flex-col items-center justify-center relative">
+            <div className="relative w-full max-w-[460px]">
+              {/* Glowing Aura Ring */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/20 to-emerald-500/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
+              
+              <AICore3D size={420} className="relative z-10 mx-auto" interactive={true} />
 
-          <p className="text-sm sm:text-lg 2xl:text-2xl 3xl:text-3xl text-neutral-300 max-w-3xl 2xl:max-w-5xl mx-auto leading-relaxed">
-            Подключите <span className="text-white font-semibold underline decoration-green-500/50">Binance Read-Only API</span> и получайте глубокие рекомендации, мгновенную оценку просадок и Telegram-уведомления от мульти-агентной нейросетевой модели Gemini.
-          </p>
-
-          <div className="pt-2 2xl:pt-6 flex flex-col sm:flex-row items-center justify-center gap-4 2xl:gap-6">
-            <button
-              onClick={() => onOpenAuth('register')}
-              className="w-full sm:w-auto px-8 py-4 2xl:px-10 2xl:py-5 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 hover:from-green-400 hover:to-emerald-400 text-black font-extrabold text-base 2xl:text-xl rounded-2xl shadow-xl shadow-green-500/25 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-3"
-            >
-              <span>Зарегистрироваться бесплатно</span>
-              <ArrowRight className="w-5 h-5 2xl:w-6 2xl:h-6" />
-            </button>
-
-            <button
-              onClick={onOpenDemoDashboard}
-              className="w-full sm:w-auto px-6 py-4 2xl:px-8 2xl:py-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-sm 2xl:text-lg rounded-2xl backdrop-blur-md transition-all flex items-center justify-center gap-2.5"
-            >
-              <Eye className="w-4 h-4 2xl:w-5 2xl:h-5 text-green-400" />
-              <span>Смотреть Live Dashboard</span>
-            </button>
-          </div>
-
-          {/* Live AI Activity Widget */}
-          <div className="pt-8 2xl:pt-12 max-w-4xl 2xl:max-w-6xl mx-auto">
-            <div className="bg-[#0f1117] border border-white/10 rounded-2xl 2xl:rounded-3xl p-5 sm:p-8 2xl:p-10 shadow-2xl text-left grid grid-cols-2 lg:grid-cols-4 gap-4 2xl:gap-8">
-              <div className="space-y-1.5">
-                <div className="text-[11px] 2xl:text-sm font-semibold text-neutral-400 flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-green-400" />
-                  <span>Анализ рынков</span>
+              {/* Floating Interactive Signal Badge */}
+              <div className="absolute -bottom-4 -left-2 z-20 bg-[#070a12]/90 border border-cyan-500/40 rounded-2xl p-4 backdrop-blur-xl shadow-2xl max-w-[260px] space-y-2 animate-fadeIn">
+                <div className="flex items-center justify-between text-[11px] font-mono">
+                  <span className="text-neutral-400">AI SIGNAL</span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">BTC BUY 87%</span>
                 </div>
-                <div className="text-sm sm:text-base 2xl:text-2xl font-extrabold text-white font-mono">24/7 (25 пар)</div>
-                <div className="text-[10px] 2xl:text-xs text-green-400">Binance Spot & Futures</div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="text-[11px] 2xl:text-sm font-semibold text-neutral-400 flex items-center gap-1.5">
-                  <Cpu className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-emerald-400" />
-                  <span>Скорость анализа</span>
+                <div className="text-xs font-mono font-bold text-white flex items-center justify-between">
+                  <span>BTC/USDT</span>
+                  <span className="text-emerald-400">$104,523</span>
                 </div>
-                <div className="text-sm sm:text-base 2xl:text-2xl font-extrabold text-white font-mono">1.48M свечей/сек</div>
-                <div className="text-[10px] 2xl:text-xs text-neutral-400">Gemini 3.5 Neural Engine</div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="text-[11px] 2xl:text-sm font-semibold text-neutral-400 flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-amber-400" />
-                  <span>Обновление данных</span>
+                <div className="w-full bg-white/10 h-1 rounded-full overflow-hidden">
+                  <div className="bg-gradient-to-r from-cyan-400 to-emerald-400 h-full w-[87%]" />
                 </div>
-                <div className="text-sm sm:text-base 2xl:text-2xl font-extrabold text-white font-mono flex items-center gap-1.5">
-                  <span>{lastUpdateSec === 0 ? 'Только что' : `${lastUpdateSec} сек назад`}</span>
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
-                </div>
-                <div className="text-[10px] 2xl:text-xs text-green-400">WebSocket поток</div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="text-[11px] 2xl:text-sm font-semibold text-neutral-400 flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-sky-400" />
-                  <span>Beta-Тестеры</span>
-                </div>
-                <div className="text-sm sm:text-base 2xl:text-2xl font-extrabold text-white font-mono">1,240+ участников</div>
-                <div className="text-[10px] 2xl:text-xs text-sky-400">Точность сигналов 84.6%</div>
               </div>
             </div>
           </div>
@@ -223,8 +236,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 2xl:gap-8">
-            <div className="bg-[#12151c] border border-white/10 rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 hover:border-green-500/40 transition-all space-y-4">
-              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-green-500/10 text-green-400 flex items-center justify-center font-bold">
+            <div className="glass-card-3d rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 space-y-4">
+              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold border border-cyan-500/20">
                 <Lock className="w-5 h-5 2xl:w-7 2xl:h-7" />
               </div>
               <h3 className="text-base 2xl:text-xl font-extrabold text-white">No Withdrawal API</h3>
@@ -233,8 +246,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </p>
             </div>
 
-            <div className="bg-[#12151c] border border-white/10 rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 hover:border-green-500/40 transition-all space-y-4">
-              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold">
+            <div className="glass-card-3d rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 space-y-4">
+              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold border border-emerald-500/20">
                 <Eye className="w-5 h-5 2xl:w-7 2xl:h-7" />
               </div>
               <h3 className="text-base 2xl:text-xl font-extrabold text-white">Read-Only First</h3>
@@ -243,8 +256,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </p>
             </div>
 
-            <div className="bg-[#12151c] border border-white/10 rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 hover:border-green-500/40 transition-all space-y-4">
-              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-teal-500/10 text-teal-400 flex items-center justify-center font-bold">
+            <div className="glass-card-3d rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 space-y-4">
+              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-teal-500/10 text-teal-400 flex items-center justify-center font-bold border border-teal-500/20">
                 <Key className="w-5 h-5 2xl:w-7 2xl:h-7" />
               </div>
               <h3 className="text-base 2xl:text-xl font-extrabold text-white">AES-256 Encryption</h3>
@@ -253,8 +266,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </p>
             </div>
 
-            <div className="bg-[#12151c] border border-white/10 rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 hover:border-green-500/40 transition-all space-y-4">
-              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold">
+            <div className="glass-card-3d rounded-2xl 2xl:rounded-3xl p-6 2xl:p-8 space-y-4">
+              <div className="w-10 h-10 2xl:w-14 2xl:h-14 rounded-xl 2xl:rounded-2xl bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold border border-sky-500/20">
                 <Server className="w-5 h-5 2xl:w-7 2xl:h-7" />
               </div>
               <h3 className="text-base 2xl:text-xl font-extrabold text-white">Funds Stay on Binance</h3>
@@ -611,11 +624,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-6 2xl:gap-10 text-[11px] 2xl:text-xs">
-            <a href="#security" className="hover:text-neutral-300">Политика безопасности</a>
-            <a href="#faq" className="hover:text-neutral-300">Условия использования</a>
-            <a href="#beta" className="hover:text-neutral-300">Beta Документация</a>
-            <span className="font-mono text-green-500/80">Binance Read-Only API Standard</span>
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6 2xl:gap-8 text-[11px] 2xl:text-xs">
+            <button onClick={() => onOpenLegalDoc?.('privacy')} className="hover:text-green-400 transition-colors">
+              Privacy Policy
+            </button>
+            <button onClick={() => onOpenLegalDoc?.('cookies')} className="hover:text-green-400 transition-colors">
+              Cookie Policy
+            </button>
+            <button onClick={() => onOpenLegalDoc?.('terms')} className="hover:text-green-400 transition-colors">
+              Terms of Service
+            </button>
+            <button onClick={() => onOpenLegalDoc?.('risk-disclaimer')} className="hover:text-amber-400 transition-colors font-semibold">
+              Risk Disclaimer
+            </button>
+            <button onClick={() => onOpenLegalDoc?.('security')} className="hover:text-cyan-400 transition-colors">
+              Security
+            </button>
+            <button onClick={onOpenCookiePreferences} className="hover:text-neutral-200 transition-colors underline">
+              Настройки cookies
+            </button>
+            <a href="mailto:support@synapseai.app" className="hover:text-neutral-200 transition-colors">
+              Contact
+            </a>
+            <span className="font-mono text-green-500/80 hidden lg:inline">Binance Read-Only Standard</span>
           </div>
         </div>
       </footer>

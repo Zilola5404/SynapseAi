@@ -39,17 +39,28 @@ import { UserOnboardingModal } from './components/UserOnboardingModal';
 import { AIDecisionModal } from './components/AIDecisionModal';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
+import { UserProfileModal } from './components/UserProfileModal';
+import { CookieBanner } from './components/CookieBanner';
+import { CookiePreferencesModal } from './components/CookiePreferencesModal';
+import { LegalDocsModal, LegalDocType } from './components/LegalDocsModal';
+import { AIStatusBanner } from './components/AIStatusBanner';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { getCurrentSessionUser, clearCurrentSessionUser } from './lib/userService';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'landing' | 'dashboard'>('landing');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [profileTab, setProfileTab] = useState<'profile' | 'settings' | 'billing' | 'emails'>('profile');
+
+  // Legal & Cookie management state
+  const [isCookiePrefsOpen, setIsCookiePrefsOpen] = useState<boolean>(false);
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState<boolean>(false);
+  const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocType>('privacy');
+
   const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(() => {
-    try {
-      const saved = localStorage.getItem('synapse_user');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return null;
+    return getCurrentSessionUser();
   });
 
   const [assets, setAssets] = useState<CryptoAsset[]>(INITIAL_ASSETS);
@@ -273,125 +284,17 @@ export default function App() {
     }
   }, []);
 
-  // Price Tick & Position Risk Evaluation Engine (Runs every 2s)
+  // Рыночные цены для дашборда. SL/TP и автосделки только на backend.
   useEffect(() => {
     const interval = setInterval(() => {
       fetchMarketData();
-
-      // Update positions with latest market price and evaluate SL/TP/Trailing Stop
-      setPositions((prevPositions) => {
-        if (prevPositions.length === 0) return prevPositions;
-
-        const updated: Position[] = [];
-        const toClose: { pos: Position; reason: 'TAKE_PROFIT' | 'STOP_LOSS' | 'MAX_DRAWDOWN' }[] = [];
-
-        for (const pos of prevPositions) {
-          const matchingAsset = assets.find((a) => a.symbol === pos.symbol);
-          const currentPrice = matchingAsset ? matchingAsset.price : pos.currentPrice;
-
-          const isLong = pos.side === 'LONG';
-          const priceDiff = isLong ? currentPrice - pos.entryPrice : pos.entryPrice - currentPrice;
-          const unrealizedPnL = (priceDiff / pos.entryPrice) * pos.sizeUsdt;
-          const unrealizedPnLPct = (unrealizedPnL / pos.marginUsdt) * 100;
-
-          let stopLossPrice = pos.stopLossPrice;
-
-          // Trailing Stop logic
-          if (risk.enableTrailingStop && unrealizedPnLPct > 2) {
-            const trailingOffset = currentPrice * (risk.trailingStopPct / 100);
-            if (isLong) {
-              const newSl = Number((currentPrice - trailingOffset).toFixed(2));
-              if (newSl > stopLossPrice) stopLossPrice = newSl;
-            } else {
-              const newSl = Number((currentPrice + trailingOffset).toFixed(2));
-              if (newSl < stopLossPrice) stopLossPrice = newSl;
-            }
-          }
-
-          // Check if SL or TP hit
-          let exitReason: 'TAKE_PROFIT' | 'STOP_LOSS' | null = null;
-          if (isLong) {
-            if (currentPrice <= stopLossPrice) exitReason = 'STOP_LOSS';
-            else if (currentPrice >= pos.takeProfitPrice) exitReason = 'TAKE_PROFIT';
-          } else {
-            if (currentPrice >= stopLossPrice) exitReason = 'STOP_LOSS';
-            else if (currentPrice <= pos.takeProfitPrice) exitReason = 'TAKE_PROFIT';
-          }
-
-          if (exitReason) {
-            toClose.push({ pos: { ...pos, currentPrice, unrealizedPnL, unrealizedPnLPct, stopLossPrice }, reason: exitReason });
-          } else {
-            updated.push({
-              ...pos,
-              currentPrice,
-              unrealizedPnL: Number(unrealizedPnL.toFixed(2)),
-              unrealizedPnLPct: Number(unrealizedPnLPct.toFixed(2)),
-              stopLossPrice,
-            });
-          }
-        }
-
-        // Execute auto-closures for positions hitting SL / TP
-        if (toClose.length > 0) {
-          toClose.forEach(({ pos, reason }) => {
-            const closed: ClosedTrade = {
-              id: `trd-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-              symbol: pos.symbol,
-              side: pos.side,
-              entryPrice: pos.entryPrice,
-              exitPrice: pos.currentPrice,
-              sizeUsdt: pos.sizeUsdt,
-              leverage: pos.leverage,
-              pnl: pos.unrealizedPnL,
-              pnlPct: pos.unrealizedPnLPct,
-              closedAt: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-              exitReason: reason,
-              aiConfidence: pos.aiConfidence,
-            };
-
-            setClosedTrades((ct) => [closed, ...ct]);
-
-            // Update stats
-            setStats((st) => {
-              const newEquity = st.totalEquityUsdt + pos.unrealizedPnL;
-              const isWin = pos.unrealizedPnL >= 0;
-              const winningCount = st.winningTradesCount + (isWin ? 1 : 0);
-              const losingCount = st.losingTradesCount + (!isWin ? 1 : 0);
-              const totalCount = st.totalTradesCount + 1;
-
-              return {
-                ...st,
-                totalEquityUsdt: Number(newEquity.toFixed(2)),
-                availableBalanceUsdt: Number((st.availableBalanceUsdt + pos.marginUsdt + pos.unrealizedPnL).toFixed(2)),
-                marginUsedUsdt: Math.max(0, st.marginUsedUsdt - pos.marginUsdt),
-                realizedPnL24h: Number((st.realizedPnL24h + pos.unrealizedPnL).toFixed(2)),
-                totalTradesCount: totalCount,
-                winningTradesCount: winningCount,
-                losingTradesCount: losingCount,
-                winRatePct: Number(((winningCount / totalCount) * 100).toFixed(1)),
-              };
-            });
-
-            addLog({
-              level: 'RISK_WARN',
-              pair: pos.symbol,
-              action: `Авто-закрытие ${reason === 'TAKE_PROFIT' ? 'Take-Profit 🎯' : 'Stop-Loss 🛡️'}`,
-              details: `Ордер закрыт по цене $${pos.currentPrice}. Результат: ${pos.unrealizedPnL >= 0 ? '+' : ''}$${pos.unrealizedPnL.toFixed(2)} (${pos.unrealizedPnLPct.toFixed(2)}%).`,
-              reasoning: reason === 'TAKE_PROFIT' ? 'Достигнут целевой уровень профита.' : 'Сработала автоматическая защита риска (Stop-Loss).',
-            });
-          });
-        }
-
-        return updated;
-      });
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [assets, risk.enableTrailingStop, risk.trailingStopPct, fetchMarketData, addLog]);
+  }, [fetchMarketData]);
 
-  // AI Autonomous Scanning & Trading Loop
   const runAiAnalysisScan = useCallback(async () => {
-    if (isScanningRef.current || risk.emergencyKillSwitch || !strategy.autoTradeEnabled) return;
+    if (isScanningRef.current || risk.emergencyKillSwitch) return;
     setIsScanning(true);
 
     try {
@@ -433,67 +336,10 @@ export default function App() {
           level: ai.signal === 'HOLD' ? 'INFO' : 'SIGNAL',
           pair: targetSymbol,
           action: `Анализ AI (${ai.signal})`,
-          details: ai.analysisText,
+          details: `${ai.analysisText} Торговля выполняется только на сервере (Telegram-бот / TradingOrchestrator).`,
           reasoning: `Паттерн: ${ai.patternDetected || 'Консолидация'}. Факторы: ${ai.keyDrivers?.join(', ')}`,
           confidence: ai.confidence,
         });
-
-        // If signal is BUY or SELL and confidence >= threshold
-        if (
-          (ai.signal === 'BUY' || ai.signal === 'SELL') &&
-          ai.confidence >= strategy.aiConfidenceThreshold
-        ) {
-          // Check if position already exists for this pair
-          const existing = positions.find((p) => p.symbol === targetSymbol);
-          if (!existing && positions.length < 5) {
-            const margin = Math.min(
-              stats.availableBalanceUsdt * 0.9,
-              stats.totalEquityUsdt * (risk.maxPositionSizePct / 100)
-            );
-
-            if (margin >= 50) {
-              const leverage = Math.min(risk.maxLeverage, ai.suggestedLeverage || 5);
-              const side = ai.suggestedSide || (ai.signal === 'BUY' ? 'LONG' : 'SHORT');
-
-              const newPos: Position = {
-                id: `pos-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-                symbol: targetSymbol,
-                side,
-                entryPrice: targetAsset.price,
-                currentPrice: targetAsset.price,
-                sizeUsdt: Number((margin * leverage).toFixed(2)),
-                marginUsdt: Number(margin.toFixed(2)),
-                leverage,
-                liquidationPrice: side === 'LONG' ? targetAsset.price * (1 - 0.9 / leverage) : targetAsset.price * (1 + 0.9 / leverage),
-                unrealizedPnL: 0,
-                unrealizedPnLPct: 0,
-                stopLossPrice: ai.suggestedStopLossPrice || (side === 'LONG' ? targetAsset.price * 0.98 : targetAsset.price * 1.02),
-                takeProfitPrice: ai.suggestedTakeProfitPrice || (side === 'LONG' ? targetAsset.price * 1.05 : targetAsset.price * 0.95),
-                openedAt: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-                aiRationale: ai.analysisText,
-                aiConfidence: ai.confidence,
-                riskLevel: ai.riskLevel || 'LOW',
-              };
-
-              setPositions((prev) => [...prev, newPos]);
-
-              setStats((st) => ({
-                ...st,
-                marginUsedUsdt: Number((st.marginUsedUsdt + margin).toFixed(2)),
-                availableBalanceUsdt: Number((st.availableBalanceUsdt - margin).toFixed(2)),
-              }));
-
-              addLog({
-                level: 'TRADE',
-                pair: targetSymbol,
-                action: `Исполнение ордера ${side}`,
-                details: `Открыта позиция на $${newPos.sizeUsdt} с плечом ${leverage}x. Маржа: $${margin.toFixed(2)}. SL: $${newPos.stopLossPrice}, TP: $${newPos.takeProfitPrice}.`,
-                reasoning: `Автономное решение Gemini AI (Уверенность: ${ai.confidence}%).`,
-                confidence: ai.confidence,
-              });
-            }
-          }
-        }
       }
     } catch (e) {
       console.error('AI scan error:', e);
@@ -502,17 +348,7 @@ export default function App() {
     }
   }, [assets, positions, risk, strategy, stats, addLog]);
 
-  // Autonomous Trading Timer Effect
-  useEffect(() => {
-    if (!strategy.autoTradeEnabled || risk.emergencyKillSwitch) return;
-
-    const intervalMs = (strategy.scanIntervalSeconds || 10) * 1000;
-    const timer = setInterval(() => {
-      runAiAnalysisScan();
-    }, intervalMs);
-
-    return () => clearInterval(timer);
-  }, [strategy.autoTradeEnabled, strategy.scanIntervalSeconds, risk.emergencyKillSwitch, runAiAnalysisScan]);
+  // Автоторговля вынесена в TradingOrchestrator на сервере (Telegram-first).
 
   // Close Position Handler
   const handleClosePosition = (positionId: string, reason: string = 'MANUAL') => {
@@ -737,32 +573,82 @@ export default function App() {
     );
   };
 
+  const handleOpenAuth = (mode: 'login' | 'register') => {
+    if (currentUser) {
+      setCurrentView('dashboard');
+    } else {
+      setAuthMode(mode);
+      setIsAuthModalOpen(true);
+    }
+  };
+
+  const handleLogout = () => {
+    clearCurrentSessionUser();
+    setCurrentUser(null);
+    setCurrentView('landing');
+    setIsProfileModalOpen(false);
+  };
+
+  const handleOpenProfileTab = (tab: 'profile' | 'settings' | 'billing' | 'emails') => {
+    setProfileTab(tab);
+    setIsProfileModalOpen(true);
+  };
+
+  const handleOpenLegalDoc = (doc: LegalDocType) => {
+    setActiveLegalDoc(doc);
+    setIsLegalModalOpen(true);
+  };
+
   if (currentView === 'landing') {
     return (
       <>
         <LandingPage
-          onOpenAuth={(mode) => {
-            setAuthMode(mode);
-            setIsAuthModalOpen(true);
-          }}
+          onOpenAuth={handleOpenAuth}
           onOpenDemoDashboard={() => setCurrentView('dashboard')}
           assets={assets}
+          onOpenLegalDoc={handleOpenLegalDoc}
+          onOpenCookiePreferences={() => setIsCookiePrefsOpen(true)}
         />
         <AuthModal
           isOpen={isAuthModalOpen}
           onClose={() => setIsAuthModalOpen(false)}
           initialMode={authMode}
+          onOpenLegalDoc={handleOpenLegalDoc}
           onSuccess={(userData) => {
             setCurrentUser(userData);
             setCurrentView('dashboard');
+            if (authMode === 'register') {
+              setIsOnboardingOpen(true);
+            }
           }}
+        />
+
+        <CookieBanner
+          onOpenPreferences={() => setIsCookiePrefsOpen(true)}
+          onOpenLegalDoc={handleOpenLegalDoc}
+        />
+
+        <CookiePreferencesModal
+          isOpen={isCookiePrefsOpen}
+          onClose={() => setIsCookiePrefsOpen(false)}
+          onOpenLegalDoc={handleOpenLegalDoc}
+        />
+
+        <LegalDocsModal
+          isOpen={isLegalModalOpen}
+          onClose={() => setIsLegalModalOpen(false)}
+          initialDoc={activeLegalDoc}
+          onOpenCookiePreferences={() => setIsCookiePrefsOpen(true)}
         />
       </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-cyan-500 selection:text-slate-950">
+    <div className="min-h-screen bg-[#05070d] text-slate-100 font-sans antialiased selection:bg-cyan-500 selection:text-slate-950">
+      {/* Institutional AI Status Live Ticker Banner */}
+      <AIStatusBanner />
+
       {/* Top Fixed Header */}
       <Header
         strategy={strategy}
@@ -785,12 +671,15 @@ export default function App() {
         onOpenBinanceSettings={() => setIsBinanceModalOpen(true)}
         onOpenTelegramSettings={() => setIsTelegramModalOpen(true)}
         onOpenOnboarding={() => setIsOnboardingOpen(true)}
+        onOpenProfileTab={handleOpenProfileTab}
+        onOpenAuth={handleOpenAuth}
+        onLogout={handleLogout}
         isScanning={isScanning}
         isPaperTrading={!binanceConfig.apiKey || binanceConfig.isTestnet}
       />
 
       {/* Main Container */}
-      <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6">
+      <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 pb-24 md:pb-6">
         {/* Stage 3 Emergency Safeguard Alert Banner */}
         <EmergencyRiskBanner
           risk={risk}
@@ -937,10 +826,52 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         initialMode={authMode}
+        onOpenLegalDoc={handleOpenLegalDoc}
         onSuccess={(userData) => {
           setCurrentUser(userData);
           setCurrentView('dashboard');
         }}
+      />
+
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        onLogout={handleLogout}
+        initialTab={profileTab}
+      />
+
+      <CookieBanner
+        onOpenPreferences={() => setIsCookiePrefsOpen(true)}
+        onOpenLegalDoc={handleOpenLegalDoc}
+      />
+
+      <CookiePreferencesModal
+        isOpen={isCookiePrefsOpen}
+        onClose={() => setIsCookiePrefsOpen(false)}
+        onOpenLegalDoc={handleOpenLegalDoc}
+      />
+
+      <LegalDocsModal
+        isOpen={isLegalModalOpen}
+        onClose={() => setIsLegalModalOpen(false)}
+        initialDoc={activeLegalDoc}
+        onOpenCookiePreferences={() => setIsCookiePrefsOpen(true)}
+      />
+
+      <MobileBottomNav
+        currentView={currentView}
+        onNavigateHome={() => setCurrentView('landing')}
+        onNavigateDashboard={() => setCurrentView('dashboard')}
+        onOpenAIProfile={() => setIsOnboardingOpen(true)}
+        onOpenManualTrade={() => setIsManualTradeOpen(true)}
+        onOpenProfile={() => {
+          if (currentUser) {
+            handleOpenProfileTab('profile');
+          } else {
+            handleOpenAuth('login');
+          }
+        }}
+        isScanning={isScanning}
       />
     </div>
   );

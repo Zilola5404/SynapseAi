@@ -7,6 +7,7 @@ const tests = [
   "server/risk.test.ts",
   "server/binanceErrors.test.ts",
   "server/services/aiService.test.ts",
+  "server/trading/tradingCore.test.ts",
 ];
 
 async function runFile(file: string): Promise<number> {

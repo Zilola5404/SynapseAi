@@ -22,6 +22,7 @@ import { credentialsRouter } from "./server/routes/credentials.js";
 import { tradingRouter } from "./server/routes/trading.js";
 import { startTelegramBot } from "./server/telegram/bot.js";
 import { startTradingEngine } from "./server/services/tradingEngine.js";
+import { runHistoricalBacktest } from "./server/trading/backtest/BacktestEngine.js";
 
 dotenv.config({ quiet: true });
 
@@ -360,52 +361,32 @@ app.get("/api/system/health", (req, res) => {
 });
 
 // 12. Server-Side Backtest Computation Endpoint
-app.post("/api/backtest/run", (req, res) => {
+app.post("/api/backtest/run", async (req, res) => {
   try {
-    const { scenario = 'BULL_RUN', timeframe = '30D', strategyMode = 'BALANCED' } = req.body;
-
-    let winRate = 70;
-    let totalReturn = 22.5;
-    let maxDrawdown = 3.5;
-    let tradesCount = 135;
-    let profitFactor = 2.45;
-    let sharpeRatio = 2.05;
-
-    if (scenario === 'SIDEWAYS_VOLATILE') {
-      winRate = 62;
-      totalReturn = 10.5;
-      maxDrawdown = 4.9;
-      tradesCount = 185;
-      profitFactor = 1.80;
-      sharpeRatio = 1.40;
-    } else if (scenario === 'BEAR_DUMP') {
-      winRate = 56;
-      totalReturn = 5.8;
-      maxDrawdown = 6.2;
-      tradesCount = 105;
-      profitFactor = 1.38;
-      sharpeRatio = 1.05;
-    }
-
-    if (timeframe === '7D') {
-      totalReturn *= 0.3;
-      tradesCount = Math.floor(tradesCount * 0.25);
-    } else if (timeframe === '90D') {
-      totalReturn *= 2.4;
-      tradesCount = Math.floor(tradesCount * 2.8);
-    }
-
+    const symbol = String(req.body.symbol || "BTCUSDT").toUpperCase();
+    const result = await runHistoricalBacktest({
+      symbol,
+      interval: req.body.interval || "1h",
+      limit: parseInt(String(req.body.limit || "500"), 10),
+    });
     res.json({
       success: true,
-      scenario,
-      timeframe,
-      strategyMode,
-      winRate,
-      totalReturnPct: Number(totalReturn.toFixed(1)),
-      maxDrawdownPct: Number(maxDrawdown.toFixed(1)),
-      tradesCount,
-      profitFactor: Number(profitFactor.toFixed(2)),
-      sharpeRatio: Number(sharpeRatio.toFixed(2)),
+      scenario: req.body.scenario || "HISTORICAL",
+      timeframe: req.body.timeframe || "OHLCV",
+      strategyMode: "TREND_MOMENTUM",
+      winRate: result.winRate,
+      totalReturnPct: result.totalReturnPct,
+      maxDrawdownPct: result.maxDrawdownPct,
+      tradesCount: result.trades,
+      profitFactor: result.profitFactor,
+      sharpeRatio: result.sharpeRatio,
+      sortinoRatio: result.sortinoRatio,
+      expectancy: result.expectancy,
+      averageWin: result.averageWin,
+      averageLoss: result.averageLoss,
+      fees: result.fees,
+      slippageImpact: result.slippageImpact,
+      finalEquity: result.finalEquity,
       computedAt: new Date().toISOString(),
     });
   } catch (error: any) {

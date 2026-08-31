@@ -1,46 +1,35 @@
-import { Bot, Keyboard, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { prisma } from "../db.js";
 import { upsertTelegramUser } from "../services/userService.js";
-import { saveExchangeCredentials, getPublicCredentials } from "../services/credentialService.js";
-import { placeGuardedOrder, triggerKillSwitch, resetKillSwitch, accountEquity, realizedPnl24h } from "../services/orderService.js";
-import { analyzeSymbol } from "../services/aiService.js";
-import { writeSystemLog, listUserLogs } from "../services/logService.js";
-import { binanceWsManager } from "../websocket.js";
-import { candleCache } from "../market/candleCache.js";
+import { tradingOrchestrator } from "../trading/orchestrator/TradingOrchestrator.js";
+import { snapshotFor } from "../market/MarketScanner.js";
+import { strategyEngine } from "../trading/strategy/StrategyEngine.js";
+import { realizedPnl24h } from "../services/orderService.js";
+import { saveExchangeCredentials, getDecryptedCredentials } from "../services/credentialService.js";
 import { testBinanceApiConnection } from "../binance.js";
-import { getDecryptedCredentials } from "../services/credentialService.js";
+import { runHistoricalBacktest } from "../trading/backtest/BacktestEngine.js";
+import { binanceWsManager } from "../websocket.js";
+import type { StrategySignal } from "../trading/types.js";
 
-type Step = "idle" | "await_api_key" | "await_api_secret" | "await_trade";
-const sessions = new Map<string, { step: Step; apiKey?: string }>();
+const pendingSignals = new Map<string, StrategySignal>();
+const sessions = new Map<string, { step: "api_key" | "api_secret"; apiKey?: string }>();
 
-function sessionKey(telegramId: string) {
-  return telegramId;
+function mainKeyboard() {
+  return new InlineKeyboard()
+    .text("▶️ Запустить бота", "start_ai")
+    .text("📊 Анализ рынка", "market_menu")
+    .row()
+    .text("🔍 Scan", "scan")
+    .text("💼 Позиции", "positions")
+    .row()
+    .text("📈 Статистика", "stats")
+    .text("⚙️ Настройки риска", "risk")
+    .row()
+    .text("🛑 Stop Trading", "stop")
+    .text("🚨 Panic", "panic");
 }
-
-const HELP = `SynapseAi — серверный торговый агент
-
-<b>Команды</b>
-/start — регистрация
-/help — справка
-/status — здоровье системы и портфель
-/keys — сохранить API-ключи Binance (шифруются AES-256-GCM)
-/balance — баланс
-/risk — лимиты риска
-/auto_on — включить автоторговлю
-/auto_off — выключить автоторговлю
-/scan BTCUSDT — AI-анализ пары
-/trade — ручная сделка: /trade BTCUSDT LONG 100 5
-/positions — открытые позиции
-/history — последние сделки
-/logs — журнал
-/kill — аварийная остановка
-/unlock — снять kill switch
-/price BTCUSDT — живая цена
-
-Ключи никогда не возвращаются ботом, только маска вида <code>vmX9...4aZ</code>.
-По умолчанию: Binance Futures Testnet.`;
 
 export async function startTelegramBot() {
   const token = config.telegramBotToken;
@@ -51,387 +40,374 @@ export async function startTelegramBot() {
 
   logger.info("Подключаем Telegram-бота...");
   const bot = new Bot(token);
-
-  bot.catch((err) => {
-    logger.error({ err: err.error }, "Telegram bot error");
-  });
+  bot.catch((err) => logger.error({ err: err.error }, "Telegram bot error"));
 
   bot.command("start", async (ctx) => {
-    const from = ctx.from;
-    if (!from) return;
-    const user = await upsertTelegramUser(String(from.id), String(ctx.chat.id), [from.first_name, from.last_name].filter(Boolean).join(" "));
-    await writeSystemLog({
-      userId: user.id,
-      level: "INFO",
-      action: "TELEGRAM_START",
-      details: `Пользователь ${user.name} подключился через Telegram`,
-    });
-    const kb = new Keyboard()
-      .text("/status")
-      .text("/positions")
-      .row()
-      .text("/auto_on")
-      .text("/auto_off")
-      .row()
-      .text("/kill")
-      .text("/help")
-      .resized();
+    const user = await requireUser(ctx);
+    if (!user) return;
+    const mode = user.tradingMode || "PAPER";
     await ctx.reply(
-      `Привет, ${user.name}!\nАккаунт создан. ID: <code>${user.id}</code>\n\n${HELP}`,
-      { parse_mode: "HTML", reply_markup: kb }
+      `🤖 <b>Добро пожаловать в SynapseAI</b>\n\n` +
+        `AI Trading Assistant готов к работе.\n\n` +
+        `Текущий режим:\n🟡 <b>PAPER TRADING</b> (${mode})\n\n` +
+        `Ваш виртуальный баланс:\n$${user.paperBalanceUsdt.toFixed(2)}\n\n` +
+        `Автоторговля:\n${user.autoTradeEnabled ? "🟢 ON" : "🔴 OFF"}`,
+      { parse_mode: "HTML", reply_markup: mainKeyboard() }
     );
   });
 
-  bot.command("help", async (ctx) => ctx.reply(HELP, { parse_mode: "HTML" }));
+  bot.command("help", async (ctx) =>
+    ctx.reply(
+      "Команды: /start /status /market BTCUSDT /scan /positions /risk /stop /panic /keys /backtest BTCUSDT",
+      { reply_markup: mainKeyboard() }
+    )
+  );
 
   bot.command("status", async (ctx) => {
     const user = await requireUser(ctx);
     if (!user) return;
-    const ws = binanceWsManager.getStatus();
-    const creds = await getPublicCredentials(user.id);
-    const equity = await accountEquity(user.id);
-    const pnl = await realizedPnl24h(user.id);
-    const open = await prisma.activePosition.count({ where: { userId: user.id } });
-    await ctx.reply(
-      `⚙️ <b>Статус</b>\n` +
-        `WS Binance: ${ws.connected ? "ONLINE" : "OFFLINE"} · символов ${ws.activeSymbols}\n` +
-        `Свечи в кеше: ${ws.candleSymbols} пар\n` +
-        `Ключи: ${creds ? creds.apiKeyMask + " · " + creds.tradingType + (creds.isTestnet ? " testnet" : " live") : "не заданы (paper)"}\n` +
-        `Капитал: $${equity.toFixed(2)}\n` +
-        `PnL 24ч: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}\n` +
-        `Позиций: ${open}\n` +
-        `Автоторговля: ${user.autoTradeEnabled ? "ON" : "OFF"}\n` +
-        `Kill switch: ${user.riskSettings?.emergencyKillSwitch ? "ON" : "OFF"}`,
-      { parse_mode: "HTML" }
-    );
+    await ctx.reply(await statusText(user), { parse_mode: "HTML", reply_markup: mainKeyboard() });
   });
 
-  bot.command("keys", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    sessions.set(sessionKey(String(ctx.from!.id)), { step: "await_api_key" });
-    await ctx.reply(
-      "Пришлите <b>Binance API Key</b> следующим сообщением.\nСекрет будет зашифрован AES-256-GCM и в чат больше не вернётся.\n/cancel — отмена.",
-      { parse_mode: "HTML" }
-    );
-  });
-
-  bot.command("cancel", async (ctx) => {
-    sessions.delete(sessionKey(String(ctx.from?.id)));
-    await ctx.reply("Диалог сброшен.");
-  });
-
-  bot.command("balance", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    const equity = await accountEquity(user.id);
-    await ctx.reply(`Доступный капитал: <b>$${equity.toFixed(2)}</b>`, { parse_mode: "HTML" });
-  });
-
-  bot.command("risk", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user?.riskSettings) return;
-    const r = user.riskSettings;
-    await ctx.reply(
-      `🛡 <b>Риск</b>\n` +
-        `Дневной убыток: ${r.maxDailyLossPct}%\n` +
-        `Просадка: ${r.maxDrawdownPct}%\n` +
-        `Размер позиции: ${r.maxPositionSizePct}%\n` +
-        `Плечо: ${r.maxLeverage}x\n` +
-        `Макс. позиций: ${r.maxOpenPositions}\n` +
-        `SL/TP: ${r.defaultStopLossPct}% / ${r.defaultTakeProfitPct}%\n` +
-        `Trailing: ${r.enableTrailingStop ? r.trailingStopPct + "%" : "off"}\n\n` +
-        `Изменить: /setrisk maxLeverage 5`,
-      { parse_mode: "HTML" }
-    );
-  });
-
-  bot.command("setrisk", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    const parts = (ctx.match || "").toString().trim().split(/\s+/);
-    const field = parts[0];
-    const value = Number(parts[1]);
-    const allowed: Record<string, string> = {
-      maxLeverage: "maxLeverage",
-      maxOpenPositions: "maxOpenPositions",
-      maxDailyLossPct: "maxDailyLossPct",
-      maxDrawdownPct: "maxDrawdownPct",
-      maxPositionSizePct: "maxPositionSizePct",
-      defaultStopLossPct: "defaultStopLossPct",
-      defaultTakeProfitPct: "defaultTakeProfitPct",
-    };
-    if (!field || !allowed[field] || Number.isNaN(value)) {
-      await ctx.reply("Формат: /setrisk maxLeverage 5");
-      return;
-    }
-    await prisma.riskSettings.update({
-      where: { userId: user.id },
-      data: { [allowed[field]]: value },
-    });
-    await ctx.reply(`Обновлено: ${field} = ${value}`);
-  });
-
-  bot.command("auto_on", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    if (user.riskSettings?.emergencyKillSwitch) {
-      await ctx.reply("Сначала снимите kill switch: /unlock");
-      return;
-    }
-    await prisma.user.update({ where: { id: user.id }, data: { autoTradeEnabled: true } });
-    await writeSystemLog({ userId: user.id, level: "INFO", action: "AUTO_ON", details: "Автоторговля включена" });
-    await ctx.reply("Автоторговля включена. Сигнал → риск-фильтр → Binance/paper.");
-  });
-
-  bot.command("auto_off", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    await prisma.user.update({ where: { id: user.id }, data: { autoTradeEnabled: false } });
-    await ctx.reply("Автоторговля выключена.");
+  bot.command("market", async (ctx) => {
+    const symbol = ((ctx.match as string) || "BTCUSDT").trim().toUpperCase() || "BTCUSDT";
+    await ctx.reply(await marketText(symbol), { parse_mode: "HTML" });
   });
 
   bot.command("scan", async (ctx) => {
     const user = await requireUser(ctx);
-    if (!user?.riskSettings) return;
-    const symbol = ((ctx.match || "BTCUSDT") as string).trim().toUpperCase() || "BTCUSDT";
-    await ctx.reply(`Анализ ${symbol}...`);
-    try {
-      const equity = await accountEquity(user.id);
-      const openPositions = await prisma.activePosition.count({ where: { userId: user.id } });
-      const ai = await analyzeSymbol({ symbol, user, risk: user.riskSettings, equity, openPositions });
-      const kb = new InlineKeyboard();
-      if (ai.signal !== "HOLD") {
-        kb.text(`Открыть ${ai.suggestedSide}`, `open:${symbol}:${ai.suggestedSide}`);
-      }
-      await ctx.reply(
-        `🧠 <b>${symbol} · ${ai.signal}</b> (${ai.confidence}%)\n` +
-          `${ai.analysisText}\n\n` +
-          `Паттерн: ${ai.patternDetected}\n` +
-          `SL ${ai.suggestedStopLossPrice} · TP ${ai.suggestedTakeProfitPrice}\n` +
-          `Маржа $${ai.suggestedPositionSizeUsdt} · ${ai.suggestedLeverage}x`,
-        { parse_mode: "HTML", reply_markup: kb }
-      );
-    } catch (err: unknown) {
-      await ctx.reply(err instanceof Error ? err.message : "Ошибка анализа");
-    }
-  });
-
-  bot.command("trade", async (ctx) => {
-    const user = await requireUser(ctx);
     if (!user) return;
-    const parts = ((ctx.match || "") as string).trim().split(/\s+/);
-    const [symbol, sideRaw, marginRaw, levRaw] = parts;
-    if (!symbol || !sideRaw || !marginRaw) {
-      await ctx.reply("Формат: /trade BTCUSDT LONG 100 5");
-      return;
-    }
-    const side = sideRaw.toUpperCase() === "SHORT" || sideRaw.toUpperCase() === "SELL" ? "SHORT" : "LONG";
-    try {
-      const result = await placeGuardedOrder({
-        userId: user.id,
-        symbol,
-        side,
-        marginUsdt: Number(marginRaw),
-        leverage: Number(levRaw || 5),
-      });
-      await ctx.reply(
-        `Ордер ${result.position.side} ${result.position.symbol}\n` +
-          `entry ${result.position.entryPrice} · ${result.order.isPaperTrade ? "PAPER" : "BINANCE"}\n` +
-          `SL ${result.position.stopLossPrice} TP ${result.position.takeProfitPrice}`
-      );
-    } catch (err: unknown) {
-      await ctx.reply(`Отклонено: ${err instanceof Error ? err.message : err}`);
-    }
+    await ctx.reply("🔍 Сканирую BTC / ETH / SOL...");
+    await sendScan(ctx, user.id);
   });
 
   bot.command("positions", async (ctx) => {
     const user = await requireUser(ctx);
     if (!user) return;
-    const list = await prisma.activePosition.findMany({ where: { userId: user.id }, orderBy: { openedAt: "desc" } });
-    if (list.length === 0) {
-      await ctx.reply("Открытых позиций нет.");
-      return;
-    }
-    const lines = list.map((p) => {
-      const live = binanceWsManager.getPrice(p.symbol) || p.currentPrice;
-      const diff = p.side === "LONG" ? live - p.entryPrice : p.entryPrice - live;
-      const pnl = (diff / p.entryPrice) * p.sizeUsdt;
-      return `${p.side} ${p.symbol} @ ${p.entryPrice} → ${live} · ${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} USDT`;
-    });
-    await ctx.reply(lines.join("\n"));
+    await sendPositions(ctx, user.id);
   });
 
-  bot.command("history", async (ctx) => {
+  bot.command("risk", async (ctx) => {
     const user = await requireUser(ctx);
     if (!user) return;
-    const list = await prisma.orderHistory.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    });
-    if (list.length === 0) {
-      await ctx.reply("История пуста.");
-      return;
-    }
+    await ctx.reply(riskText(user), { parse_mode: "HTML", reply_markup: riskKeyboard() });
+  });
+
+  bot.command("stop", async (ctx) => {
+    const user = await requireUser(ctx);
+    if (!user) return;
+    await tradingOrchestrator.stopScanner(user.id);
     await ctx.reply(
-      list
-        .map((o) => `${o.side} ${o.symbol} PnL ${o.pnl >= 0 ? "+" : ""}${o.pnl} (${o.exitReason || o.status})`)
-        .join("\n")
+      "🛑 <b>Trading Stopped</b>\n\n✓ New positions disabled\n✓ Market scanner stopped\n✓ Existing positions remain active",
+      { parse_mode: "HTML" }
     );
   });
 
-  bot.command("logs", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    const logs = await listUserLogs(user.id, 8);
-    if (logs.length === 0) {
-      await ctx.reply("Журнал пуст.");
-      return;
-    }
-    await ctx.reply(logs.map((l) => `${l.level} ${l.action}: ${l.details.slice(0, 120)}`).join("\n"));
+  bot.command("panic", async (ctx) => {
+    await ctx.reply("⚠️ <b>EMERGENCY MODE</b>\n\nЧто сделать?", {
+      parse_mode: "HTML",
+      reply_markup: new InlineKeyboard()
+        .text("STOP EVERYTHING", "panic_all")
+        .row()
+        .text("Только закрыть позиции", "panic_close")
+        .row()
+        .text("Отмена", "panic_cancel"),
+    });
   });
 
-  bot.command("kill", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    const result = await triggerKillSwitch(user.id);
-    await ctx.reply(`KILL SWITCH. Закрыто позиций: ${result.closedCount}. Автоторговля выключена.`);
+  bot.command("keys", async (ctx) => {
+    sessions.set(String(ctx.from?.id), { step: "api_key" });
+    await ctx.reply("Пришлите Binance API Key. Secret зашифруется, в чат не вернётся. /cancel");
+  });
+
+  bot.command("cancel", async (ctx) => {
+    sessions.delete(String(ctx.from?.id));
+    await ctx.reply("Отменено.");
+  });
+
+  bot.command("backtest", async (ctx) => {
+    const symbol = ((ctx.match as string) || "BTCUSDT").trim().toUpperCase() || "BTCUSDT";
+    await ctx.reply(`Backtest ${symbol}...`);
+    const result = await runHistoricalBacktest({ symbol });
+    await ctx.reply(
+      `📉 <b>Backtest ${symbol}</b>\nTrades: ${result.trades}\nReturn: ${result.totalReturnPct}%\nWin rate: ${result.winRate}%\nPF: ${result.profitFactor}\nMax DD: ${result.maxDrawdownPct}%\nSharpe: ${result.sharpeRatio}\nSortino: ${result.sortinoRatio}\nExpectancy: $${result.expectancy}\nFees: $${result.fees}`,
+      { parse_mode: "HTML" }
+    );
   });
 
   bot.command("unlock", async (ctx) => {
     const user = await requireUser(ctx);
     if (!user) return;
-    await resetKillSwitch(user.id);
-    await ctx.reply("Kill switch снят. Включить автоторговлю: /auto_on");
-  });
-
-  bot.command("price", async (ctx) => {
-    const symbol = ((ctx.match || "BTCUSDT") as string).trim().toUpperCase() || "BTCUSDT";
-    const ticker = binanceWsManager.getLatestPrices()[symbol];
-    const ind = candleCache.indicators(symbol);
-    if (!ticker) {
-      await ctx.reply(`Нет тикера по ${symbol}. WS ещё не прогрелся.`);
-      return;
-    }
-    await ctx.reply(
-      `${symbol}: $${ticker.price} (${ticker.change24h.toFixed(2)}%)\nRSI ${ind?.rsi ?? "—"} · MACD ${ind?.macdSignal ?? "—"} · ATR ${ind?.atr ?? "—"}`
-    );
-  });
-
-  bot.command("ping", async (ctx) => {
-    const user = await requireUser(ctx);
-    if (!user) return;
-    let apiKey = "";
-    let apiSecret = "";
-    let isTestnet = true;
-    try {
-      const creds = await getDecryptedCredentials(user.id);
-      if (creds) {
-        apiKey = creds.apiKey;
-        apiSecret = creds.apiSecret;
-        isTestnet = creds.isTestnet;
-      }
-    } catch {
-      // paper ping
-    }
-    const result = await testBinanceApiConnection(apiKey, apiSecret, isTestnet);
-    await ctx.reply(result.message);
+    await tradingOrchestrator.unlock(user.id);
+    await ctx.reply("LOCK снят. Нажмите ▶️ Запустить бота");
   });
 
   bot.on("callback_query:data", async (ctx) => {
-    const data = ctx.callbackQuery.data;
     const user = await requireUser(ctx);
     if (!user) return;
-    if (data.startsWith("open:")) {
-      const [, symbol, side] = data.split(":");
-      try {
-        const equity = await accountEquity(user.id);
-        const margin = Math.max(20, equity * ((user.riskSettings?.maxPositionSizePct || 5) / 100));
-        const result = await placeGuardedOrder({
-          userId: user.id,
-          symbol,
-          side: side === "SHORT" ? "SHORT" : "LONG",
-          marginUsdt: margin,
-          leverage: Math.min(user.riskSettings?.maxLeverage || 5, 5),
-        });
-        await ctx.answerCallbackQuery({ text: "Ордер отправлен" });
-        await ctx.reply(`Открыто ${result.position.side} ${result.position.symbol} @ ${result.position.entryPrice}`);
-      } catch (err: unknown) {
-        await ctx.answerCallbackQuery({ text: "Отклонено" });
-        await ctx.reply(err instanceof Error ? err.message : "Ошибка");
+    const data = ctx.callbackQuery.data;
+    await ctx.answerCallbackQuery();
+
+    if (data === "start_ai") {
+      await tradingOrchestrator.startScanner(user.id);
+      await ctx.reply("▶️ Scanner запущен. Режим PAPER. Ищу BTC/ETH/SOL...");
+      return;
+    }
+    if (data === "stop") {
+      await tradingOrchestrator.stopScanner(user.id);
+      await ctx.reply("🛑 Новые сделки выключены. Открытые позиции остаются.");
+      return;
+    }
+    if (data === "scan") {
+      await sendScan(ctx, user.id);
+      return;
+    }
+    if (data === "positions") {
+      await sendPositions(ctx, user.id);
+      return;
+    }
+    if (data === "stats") {
+      await ctx.reply(await statusText(user), { parse_mode: "HTML" });
+      return;
+    }
+    if (data === "risk") {
+      await ctx.reply(riskText(user), { parse_mode: "HTML", reply_markup: riskKeyboard() });
+      return;
+    }
+    if (data === "market_menu") {
+      const kb = new InlineKeyboard()
+        .text("BTCUSDT", "mkt:BTCUSDT")
+        .text("ETHUSDT", "mkt:ETHUSDT")
+        .text("SOLUSDT", "mkt:SOLUSDT");
+      await ctx.reply("Выберите пару:", { reply_markup: kb });
+      return;
+    }
+    if (data.startsWith("mkt:")) {
+      await ctx.reply(await marketText(data.slice(4)), { parse_mode: "HTML" });
+      return;
+    }
+    if (data === "open_paper") {
+      const signal = pendingSignals.get(user.id);
+      if (!signal) {
+        await ctx.reply("Нет активного сигнала. Сделайте /scan");
+        return;
       }
+      try {
+        await tradingOrchestrator.openFromSignal(user.id, signal);
+      } catch (err) {
+        await ctx.reply(err instanceof Error ? err.message : "Ошибка открытия");
+      }
+      return;
+    }
+    if (data === "ignore_signal") {
+      pendingSignals.delete(user.id);
+      await ctx.reply("Сигнал пропущен.");
+      return;
+    }
+    if (data.startsWith("close:")) {
+      await tradingOrchestrator.closePosition(user.id, data.slice(6), "MANUAL");
+      return;
+    }
+    if (data.startsWith("slbe:")) {
+      const pos = await prisma.activePosition.findFirst({ where: { id: data.slice(5), userId: user.id } });
+      if (pos) {
+        await prisma.activePosition.update({ where: { id: pos.id }, data: { stopLossPrice: pos.entryPrice } });
+        await ctx.reply(`Stop Loss ${pos.symbol} перенесён в безубыток: $${pos.entryPrice}`);
+      }
+      return;
+    }
+    if (data === "panic_all") {
+      await tradingOrchestrator.panic(user.id);
+      await ctx.reply(
+        "🚨 <b>EMERGENCY STOP ACTIVATED</b>\n\n✓ Scanner stopped\n✓ Trading disabled\n✓ Positions closed\n\nSynapseAI is now LOCKED.\n/unlock чтобы снять.",
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+    if (data === "panic_close") {
+      const list = await prisma.activePosition.findMany({ where: { userId: user.id } });
+      for (const p of list) await tradingOrchestrator.closePosition(user.id, p.id, "MANUAL");
+      await ctx.reply("Позиции закрыты.");
+      return;
+    }
+    if (data === "panic_cancel") {
+      await ctx.reply("Отменено.");
+      return;
+    }
+    if (data.startsWith("riskset:")) {
+      const [, field, delta] = data.split(":");
+      const r = user.riskSettings;
+      if (!r) return;
+      const map: Record<string, number> = {
+        riskPerTradePct: r.riskPerTradePct,
+        maxDailyLossPct: r.maxDailyLossPct,
+        maxDrawdownPct: r.maxDrawdownPct,
+        maxLeverage: r.maxLeverage,
+        maxOpenPositions: r.maxOpenPositions,
+      };
+      if (!(field in map)) return;
+      const next = Math.max(0.25, map[field] + Number(delta));
+      await prisma.riskSettings.update({ where: { userId: user.id }, data: { [field]: next } });
+      const fresh = await prisma.user.findUnique({ where: { id: user.id }, include: { riskSettings: true } });
+      if (fresh) await ctx.reply(riskText(fresh), { parse_mode: "HTML", reply_markup: riskKeyboard() });
     }
   });
 
   bot.on("message:text", async (ctx, next) => {
     if (ctx.message.text.startsWith("/")) return next();
-    const key = sessionKey(String(ctx.from?.id));
-    const sess = sessions.get(key);
-    if (!sess || sess.step === "idle") return next();
-
+    const sess = sessions.get(String(ctx.from?.id));
+    if (!sess) return next();
     const user = await requireUser(ctx);
     if (!user) return;
-
-    if (sess.step === "await_api_key") {
+    if (sess.step === "api_key") {
       sess.apiKey = ctx.message.text.trim();
-      sess.step = "await_api_secret";
-      sessions.set(key, sess);
+      sess.step = "api_secret";
       try {
         await ctx.deleteMessage();
       } catch {
-        // may fail if no rights
+        /* ignore */
       }
-      await ctx.reply("Ключ принят (сообщение удалено, если возможно). Теперь пришлите API Secret.");
+      await ctx.reply("Теперь API Secret.");
       return;
     }
-
-    if (sess.step === "await_api_secret") {
-      const apiSecret = ctx.message.text.trim();
-      try {
-        await ctx.deleteMessage();
-      } catch {
-        // ignore
-      }
-      try {
-        const saved = await saveExchangeCredentials({
-          userId: user.id,
-          apiKey: sess.apiKey || "",
-          apiSecret,
-          isTestnet: true,
-          tradingType: "FUTURES",
-        });
-        sessions.delete(key);
-        const creds = await getDecryptedCredentials(user.id);
-        const ping = creds
-          ? await testBinanceApiConnection(creds.apiKey, creds.apiSecret, creds.isTestnet)
-          : { success: false, message: "нет ключей" };
-        await ctx.reply(
-          `Ключи сохранены.\nМаска: <code>${saved.apiKeyMask}</code>\n${ping.message}`,
-          { parse_mode: "HTML" }
-        );
-      } catch (err: unknown) {
-        sessions.delete(key);
-        await ctx.reply(`Ошибка: ${err instanceof Error ? err.message : err}`);
-      }
+    const secret = ctx.message.text.trim();
+    try {
+      await ctx.deleteMessage();
+    } catch {
+      /* ignore */
     }
+    sessions.delete(String(ctx.from?.id));
+    const saved = await saveExchangeCredentials({
+      userId: user.id,
+      apiKey: sess.apiKey || "",
+      apiSecret: secret,
+      isTestnet: true,
+      tradingType: "FUTURES",
+    });
+    const creds = await getDecryptedCredentials(user.id);
+    const ping = creds
+      ? await testBinanceApiConnection(creds.apiKey, creds.apiSecret, true)
+      : { message: "нет ключей" };
+    await ctx.reply(`Ключи сохранены. Маска <code>${saved.apiKeyMask}</code>\n${ping.message}`, {
+      parse_mode: "HTML",
+    });
   });
 
   try {
     await bot.init();
-    const username = bot.botInfo.username;
-    logger.info(`Telegram-бот @${username} готов. Откройте https://t.me/${username} и отправьте /start`);
+    logger.info(`Telegram-бот @${bot.botInfo.username} готов. https://t.me/${bot.botInfo.username}`);
   } catch (err) {
-    logger.error({ err }, "Не удалось подключить Telegram-бота. Проверьте TELEGRAM_BOT_TOKEN");
+    logger.error({ err }, "Не удалось подключить Telegram-бота");
     return null;
   }
-
   void bot.start().catch((err) => logger.error({ err }, "Telegram bot.start failed"));
-
   return bot;
 }
 
-async function requireUser(ctx: { from?: { id: number; first_name?: string; last_name?: string }; chat?: { id: number }; reply: (t: string) => Promise<unknown> }) {
+async function sendScan(ctx: { reply: Function }, userId: string) {
+  const results = await tradingOrchestrator.scanOnce(userId);
+  const lines = results.map((r) => {
+    if (r.action === "LONG" || r.action === "SHORT") return `${r.symbol}\n🟢 ${r.action} CANDIDATE`;
+    if (r.action === "HOLD") return `${r.symbol}\n🟡 HOLD`;
+    return `${r.symbol}\n🔴 NO TRADE`;
+  });
+  const best = results.filter((r) => r.signal).sort((a, b) => (b.signal!.confidence || 0) - (a.signal!.confidence || 0))[0];
+  let text = `🔍 <b>SynapseAI Market Scan</b>\n\n${lines.join("\n\n")}\n\n━━━━━━━━━━━━\n`;
+  const kb = new InlineKeyboard();
+  if (best?.signal) {
+    pendingSignals.set(userId, best.signal);
+    text +=
+      `\n<b>Best Opportunity</b>\n${best.signal.symbol}\nDirection: ${best.signal.direction}\n` +
+      `Confidence: ${best.signal.confidence}%\nEntry: $${best.signal.entryPrice}\n` +
+      `SL: $${best.signal.stopLoss}\nTP: $${best.signal.takeProfit}\nR/R: 1 : ${best.signal.riskReward}`;
+    kb.text("▶️ Open Paper Trade", "open_paper").text("❌ Ignore", "ignore_signal");
+  } else {
+    text += "\nСейчас нет сетапа по Trend+Momentum.";
+  }
+  await ctx.reply(text, { parse_mode: "HTML", reply_markup: kb });
+}
+
+async function sendPositions(ctx: { reply: Function }, userId: string) {
+  const list = await prisma.activePosition.findMany({ where: { userId }, orderBy: { openedAt: "desc" } });
+  if (list.length === 0) {
+    await ctx.reply("Открытых позиций нет.");
+    return;
+  }
+  for (const p of list) {
+    const live = binanceWsManager.getPrice(p.symbol) || p.currentPrice;
+    const diff = p.side === "LONG" ? live - p.entryPrice : p.entryPrice - live;
+    const pnl = (diff / p.entryPrice) * p.sizeUsdt;
+    const kb = new InlineKeyboard()
+      .text("Close Position", `close:${p.id}`)
+      .text("Move SL to BE", `slbe:${p.id}`);
+    await ctx.reply(
+      `💼 <b>${p.symbol} ${p.side}</b>\n\nEntry: $${p.entryPrice}\nCurrent: $${live}\nPnL: ${pnl >= 0 ? "🟢" : "🔴"} ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}\nSL: $${p.stopLossPrice}\nTP: $${p.takeProfitPrice}`,
+      { parse_mode: "HTML", reply_markup: kb }
+    );
+  }
+}
+
+async function statusText(user: Awaited<ReturnType<typeof requireUser>>) {
+  if (!user) return "";
+  const ws = binanceWsManager.getStatus();
+  const open = await prisma.activePosition.count({ where: { userId: user.id } });
+  const pnl = await realizedPnl24h(user.id);
+  const equity = user.paperBalanceUsdt;
+  const dailyLimit = equity * ((user.riskSettings?.maxDailyLossPct || 3) / 100);
+  return (
+    `🤖 <b>SynapseAI Status</b>\n\n` +
+    `Status: ${ws.connected ? "🟢 ONLINE" : "🔴 WS OFF"}\n` +
+    `Trading: 🟡 PAPER MODE (${user.tradingMode})\n` +
+    `Auto Trading: ${user.autoTradeEnabled ? "🟢 ACTIVE" : "🔴 OFF"}\n` +
+    `Strategy: Trend + Momentum\n` +
+    `Open Positions: ${open} / ${user.riskSettings?.maxOpenPositions || 3}\n` +
+    `Today's PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}\n` +
+    `Daily Risk Limit: $${dailyLimit.toFixed(0)}\n` +
+    `Balance: $${equity.toFixed(2)}\n` +
+    `System: 🟢 Healthy${user.accountLocked ? "\n🔒 LOCKED" : ""}`
+  );
+}
+
+async function marketText(symbol: string) {
+  const snap = await snapshotFor(symbol);
+  const m = snap.m5 || snap.h1;
+  if (!m) return `Нет данных по ${symbol}`;
+  const sig = snap.h1 && snap.m15 && snap.m5 ? strategyEngine.evaluate(snap.h1, snap.m15, snap.m5) : null;
+  return (
+    `📊 <b>${m.symbol}</b>\n\nPrice: $${m.price}\nTrend: ${m.trend === "BULLISH" ? "🟢 BULLISH" : m.trend === "BEARISH" ? "🔴 BEARISH" : "🟡 NEUTRAL"}\n` +
+    `RSI: ${m.rsi}\nEMA20 ${m.ema20 > m.ema50 ? "Above" : "Below"} EMA50\nMACD: ${m.macdSignal}\nVolatility: ${m.volatility}\n` +
+    `Recommendation: ${sig ? "🟢 " + sig.direction + " CANDIDATE (" + sig.confidence + "%)" : "🟡 HOLD"}`
+  );
+}
+
+function riskText(user: NonNullable<Awaited<ReturnType<typeof requireUser>>>) {
+  const r = user.riskSettings;
+  return (
+    `⚙️ <b>Risk Management</b>\n\n` +
+    `Risk Per Trade: ${r?.riskPerTradePct ?? 0.5}%\n` +
+    `Max Daily Loss: ${r?.maxDailyLossPct}%\n` +
+    `Max Drawdown: ${r?.maxDrawdownPct}%\n` +
+    `Max Position Size: ${r?.maxPositionSizePct}%\n` +
+    `Max Open Positions: ${r?.maxOpenPositions}\n` +
+    `Max Leverage: ${r?.maxLeverage}x\n` +
+    `Trailing Stop: ${r?.enableTrailingStop ? "ON" : "OFF"}`
+  );
+}
+
+function riskKeyboard() {
+  return new InlineKeyboard()
+    .text("Risk -", "riskset:riskPerTradePct:-0.25")
+    .text("Risk +", "riskset:riskPerTradePct:0.25")
+    .row()
+    .text("Lev -", "riskset:maxLeverage:-1")
+    .text("Lev +", "riskset:maxLeverage:1");
+}
+
+async function requireUser(ctx: {
+  from?: { id: number; first_name?: string; last_name?: string };
+  chat?: { id: number };
+  reply: (t: string) => Promise<unknown>;
+}) {
   if (!ctx.from) return null;
   const user = await upsertTelegramUser(
     String(ctx.from.id),

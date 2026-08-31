@@ -203,7 +203,7 @@ export const INITIAL_STRATEGY_SETTINGS: StrategySettings = {
   sentimentWeight: 30,
   onChainWeight: 20,
   customInstructions: 'Ищи пробои с высоким объемом и подтверждением RSI. Не открывай LONG при падении рыночного сентимента ниже 40.',
-  autoTradeEnabled: true,
+  autoTradeEnabled: false,
 };
 
 export const INITIAL_LOGS: AgentLog[] = [

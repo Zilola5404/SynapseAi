@@ -33,9 +33,15 @@ model User {
   onChainWeight           Int     @default(20)
   customInstructions      String  @default("Торгуй по тренду с контролем рисков")
   autoTradeEnabled        Boolean @default(false)
+  scannerEnabled          Boolean @default(false)
+  accountLocked           Boolean @default(false)
+  tradingMode             String  @default("PAPER")
+  consecutiveLosses       Int     @default(0)
+  pauseUntil              DateTime?
   lastScanAt              DateTime?
   peakEquityUsdt          Float   @default(10000)
   paperBalanceUsdt        Float   @default(10000)
+  signals                 Signal[]
 
   @@map("users")
 }
@@ -61,9 +67,11 @@ model RiskSettings {
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   maxDailyLossPct      Float    @default(3)
   maxDrawdownPct       Float    @default(8)
-  maxPositionSizePct   Float    @default(5)
-  maxLeverage          Int      @default(10)
+  maxPositionSizePct   Float    @default(10)
+  maxLeverage          Int      @default(3)
   maxOpenPositions     Int      @default(3)
+  riskPerTradePct      Float    @default(0.5)
+  maxExposurePct       Float    @default(30)
   defaultStopLossPct   Float    @default(2)
   defaultTakeProfitPct Float    @default(5)
   enableTrailingStop   Boolean  @default(true)
@@ -147,4 +155,23 @@ model SystemLog {
   @@index([userId, createdAt])
   @@index([level, createdAt])
   @@map("system_logs")
+}
+
+model Signal {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  symbol      String
+  direction   String
+  confidence  Int
+  strategy    String   @default("TREND_MOMENTUM")
+  status      String   @default("NEW")
+  entryPrice  Float?
+  stopLoss    Float?
+  takeProfit  Float?
+  reasoning   String   @default("")
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("signals")
 }
