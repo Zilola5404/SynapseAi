@@ -1,7 +1,6 @@
 import type { RiskSettings, User } from "@prisma/client";
 import type { RiskDecision, StrategySignal } from "../types.js";
 import { sizePosition } from "./PositionSizer.js";
-import { circuitStatus } from "./CircuitBreaker.js";
 
 export function evaluateRisk(params: {
   user: User;
@@ -12,6 +11,8 @@ export function evaluateRisk(params: {
   openExposureUsdt: number;
   realizedPnl24h: number;
   source?: "auto" | "manual";
+  circuitOpen?: boolean;
+  circuitReason?: string;
 }): RiskDecision {
   const { user, risk, signal, equity, openCount, openExposureUsdt, realizedPnl24h, source = "auto" } = params;
 
@@ -27,9 +28,8 @@ export function evaluateRisk(params: {
   if (user.pauseUntil && user.pauseUntil.getTime() > Date.now()) {
     return deny(`Пауза после серии убытков до ${user.pauseUntil.toISOString()}`);
   }
-  const circuit = circuitStatus(user.id);
-  if (circuit.open) {
-    return deny(`Circuit breaker: ${circuit.reason}`);
+  if (params.circuitOpen) {
+    return deny(`Circuit breaker: ${params.circuitReason || "OPEN"}`);
   }
   if (openCount >= risk.maxOpenPositions) {
     return deny(`Лимит позиций ${openCount}/${risk.maxOpenPositions}`);

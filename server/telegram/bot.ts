@@ -7,6 +7,7 @@ import { tradingOrchestrator } from "../trading/orchestrator/TradingOrchestrator
 import { snapshotFor } from "../market/MarketScanner.js";
 import { strategyEngine } from "../trading/strategy/StrategyEngine.js";
 import { realizedPnl24h } from "../services/orderService.js";
+import { equityForUser } from "../trading/equity.js";
 import { saveExchangeCredentials, getDecryptedCredentials } from "../services/credentialService.js";
 import { testBinanceApiConnection } from "../binance.js";
 import { runHistoricalBacktest } from "../trading/backtest/BacktestEngine.js";
@@ -18,16 +19,16 @@ const sessions = new Map<string, { step: "api_key" | "api_secret"; apiKey?: stri
 
 function mainKeyboard() {
   return new InlineKeyboard()
-    .text("▶️ Запустить бота", "start_ai")
-    .text("📊 Анализ рынка", "market_menu")
+    .text("▶️ Start AI", "start_ai")
+    .text("📊 Market", "market_menu")
     .row()
     .text("🔍 Scan", "scan")
-    .text("💼 Позиции", "positions")
+    .text("💼 Positions", "positions")
     .row()
-    .text("📈 Статистика", "stats")
-    .text("⚙️ Настройки риска", "risk")
+    .text("⚙️ Risk", "risk")
+    .text("🟡 Mode", "mode_menu")
     .row()
-    .text("🛑 Stop Trading", "stop")
+    .text("🛑 Stop", "stop")
     .text("🚨 Panic", "panic");
 }
 
@@ -46,11 +47,13 @@ export async function startTelegramBot() {
     const user = await requireUser(ctx);
     if (!user) return;
     const mode = user.tradingMode || "PAPER";
+    const modeLine =
+      mode === "LIVE" ? "🔴 <b>LIVE</b>" : mode === "TESTNET" ? "🟠 <b>TESTNET</b>" : "🟡 <b>PAPER TRADING</b>";
     await ctx.reply(
       `🤖 <b>Добро пожаловать в SynapseAI</b>\n\n` +
         `AI Trading Assistant готов к работе.\n\n` +
-        `Текущий режим:\n🟡 <b>PAPER TRADING</b> (${mode})\n\n` +
-        `Ваш виртуальный баланс:\n$${user.paperBalanceUsdt.toFixed(2)}\n\n` +
+        `Текущий режим:\n${modeLine}\n\n` +
+        `Ваш баланс:\n$${user.paperBalanceUsdt.toFixed(2)} (paper)\n\n` +
         `Автоторговля:\n${user.autoTradeEnabled ? "🟢 ON" : "🔴 OFF"}`,
       { parse_mode: "HTML", reply_markup: mainKeyboard() }
     );
@@ -58,7 +61,7 @@ export async function startTelegramBot() {
 
   bot.command("help", async (ctx) =>
     ctx.reply(
-      "Команды: /start /status /market BTCUSDT /scan /positions /risk /stop /panic /keys /backtest BTCUSDT",
+    "Команды: /start /status /market BTCUSDT /scan /positions /risk /startbot /stop /panic /unlock /mode /keys",
       { reply_markup: mainKeyboard() }
     )
   );
@@ -139,7 +142,24 @@ export async function startTelegramBot() {
     const user = await requireUser(ctx);
     if (!user) return;
     await tradingOrchestrator.unlock(user.id);
-    await ctx.reply("LOCK снят. Нажмите ▶️ Запустить бота");
+    await ctx.reply("LOCK снят явно. Сканер сам не включается — /startbot");
+  });
+
+  bot.command("startbot", async (ctx) => {
+    const user = await requireUser(ctx);
+    if (!user) return;
+    try {
+      await tradingOrchestrator.startScanner(user.id);
+      await ctx.reply(`▶️ Start AI. Режим ${user.tradingMode}. Сканер BTC/ETH/SOL.`);
+    } catch (err) {
+      await ctx.reply(err instanceof Error ? err.message : "Не удалось запустить");
+    }
+  });
+
+  bot.command("mode", async (ctx) => {
+    const user = await requireUser(ctx);
+    if (!user) return;
+    await ctx.reply(modeText(user), { parse_mode: "HTML", reply_markup: modeKeyboard() });
   });
 
   bot.on("callback_query:data", async (ctx) => {
@@ -149,8 +169,56 @@ export async function startTelegramBot() {
     await ctx.answerCallbackQuery();
 
     if (data === "start_ai") {
-      await tradingOrchestrator.startScanner(user.id);
-      await ctx.reply("▶️ Scanner запущен. Режим PAPER. Ищу BTC/ETH/SOL...");
+      try {
+        await tradingOrchestrator.startScanner(user.id);
+        await ctx.reply(`▶️ Scanner запущен. Режим ${user.tradingMode}.`);
+      } catch (err) {
+        await ctx.reply(err instanceof Error ? err.message : "Ошибка");
+      }
+      return;
+    }
+    if (data === "mode_menu") {
+      await ctx.reply(modeText(user), { parse_mode: "HTML", reply_markup: modeKeyboard() });
+      return;
+    }
+    if (data === "mode_paper") {
+      await tradingOrchestrator.setMode(user.id, "PAPER");
+      await ctx.reply("Режим: PAPER. Виртуальный баланс.");
+      return;
+    }
+    if (data === "mode_testnet") {
+      try {
+        await tradingOrchestrator.setMode(user.id, "TESTNET");
+        await ctx.reply("Режим: Binance Futures TESTNET. Equity берётся с биржи.");
+      } catch (err) {
+        await ctx.reply(err instanceof Error ? err.message : "Ошибка");
+      }
+      return;
+    }
+    if (data === "mode_live") {
+      const r = user.riskSettings;
+      await ctx.reply(
+        `⚠️ <b>REAL MONEY MODE</b>\n\nMode: LIVE\nRisk Per Trade: ${r?.riskPerTradePct}% → 0.25%\nMax Daily Loss: ${r?.maxDailyLossPct}% → 1%\nMax Positions: ${r?.maxOpenPositions} → 2\nMax Leverage: ${r?.maxLeverage}x → 2x\nПары: BTCUSDT, ETHUSDT`,
+        {
+          parse_mode: "HTML",
+          reply_markup: new InlineKeyboard().text("CONFIRM LIVE", "live_confirm").text("Cancel", "panic_cancel"),
+        }
+      );
+      return;
+    }
+    if (data === "live_confirm") {
+      await ctx.reply("Последнее подтверждение. Это реальные деньги.", {
+        reply_markup: new InlineKeyboard().text("YES, ENABLE LIVE", "live_yes").text("Cancel", "panic_cancel"),
+      });
+      return;
+    }
+    if (data === "live_yes") {
+      try {
+        await tradingOrchestrator.enableLive(user.id);
+        await ctx.reply("LIVE включён с консервативными лимитами. /startbot чтобы торговать BTC/ETH.");
+      } catch (err) {
+        await ctx.reply(err instanceof Error ? err.message : "LIVE не включён");
+      }
       return;
     }
     if (data === "stop") {
@@ -217,9 +285,11 @@ export async function startTelegramBot() {
       return;
     }
     if (data === "panic_all") {
-      await tradingOrchestrator.panic(user.id);
+      const steps = await tradingOrchestrator.panic(user.id);
       await ctx.reply(
-        "🚨 <b>EMERGENCY STOP ACTIVATED</b>\n\n✓ Scanner stopped\n✓ Trading disabled\n✓ Positions closed\n\nSynapseAI is now LOCKED.\n/unlock чтобы снять.",
+        "🚨 <b>EMERGENCY STOP ACTIVATED</b>\n\n" +
+          steps.map((s) => `✓ ${s}`).join("\n") +
+          "\n\nSynapseAI is now LOCKED.\n/unlock чтобы снять — сканер сам не включится.",
         { parse_mode: "HTML" }
       );
       return;
@@ -320,7 +390,7 @@ async function sendScan(ctx: { reply: Function }, userId: string) {
       `\n<b>Best Opportunity</b>\n${best.signal.symbol}\nDirection: ${best.signal.direction}\n` +
       `Confidence: ${best.signal.confidence}%\nEntry: $${best.signal.entryPrice}\n` +
       `SL: $${best.signal.stopLoss}\nTP: $${best.signal.takeProfit}\nR/R: 1 : ${best.signal.riskReward}`;
-    kb.text("▶️ Open Paper Trade", "open_paper").text("❌ Ignore", "ignore_signal");
+    kb.text("▶️ Open Trade", "open_paper").text("❌ Ignore", "ignore_signal");
   } else {
     text += "\nСейчас нет сетапа по Trend+Momentum.";
   }
@@ -352,18 +422,24 @@ async function statusText(user: Awaited<ReturnType<typeof requireUser>>) {
   const ws = binanceWsManager.getStatus();
   const open = await prisma.activePosition.count({ where: { userId: user.id } });
   const pnl = await realizedPnl24h(user.id);
-  const equity = user.paperBalanceUsdt;
+  let equity = user.paperBalanceUsdt;
+  try {
+    equity = await equityForUser(user);
+  } catch {
+    equity = user.tradingMode === "LIVE" ? user.liveEquityUsdt : user.tradingMode === "TESTNET" ? user.testnetEquityUsdt : user.paperBalanceUsdt;
+  }
   const dailyLimit = equity * ((user.riskSettings?.maxDailyLossPct || 3) / 100);
+  const modeLabel = user.tradingMode === "LIVE" ? "🔴 LIVE" : user.tradingMode === "TESTNET" ? "🟠 TESTNET" : "🟡 PAPER MODE";
   return (
     `🤖 <b>SynapseAI Status</b>\n\n` +
     `Status: ${ws.connected ? "🟢 ONLINE" : "🔴 WS OFF"}\n` +
-    `Trading: 🟡 PAPER MODE (${user.tradingMode})\n` +
+    `Trading: ${modeLabel}\n` +
     `Auto Trading: ${user.autoTradeEnabled ? "🟢 ACTIVE" : "🔴 OFF"}\n` +
     `Strategy: Trend + Momentum\n` +
     `Open Positions: ${open} / ${user.riskSettings?.maxOpenPositions || 3}\n` +
     `Today's PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}\n` +
     `Daily Risk Limit: $${dailyLimit.toFixed(0)}\n` +
-    `Balance: $${equity.toFixed(2)}\n` +
+    `Equity: $${equity.toFixed(2)}\n` +
     `System: 🟢 Healthy${user.accountLocked ? "\n🔒 LOCKED" : ""}`
   );
 }
@@ -378,6 +454,18 @@ async function marketText(symbol: string) {
     `RSI: ${m.rsi}\nEMA20 ${m.ema20 > m.ema50 ? "Above" : "Below"} EMA50\nMACD: ${m.macdSignal}\nVolatility: ${m.volatility}\n` +
     `Recommendation: ${sig ? "🟢 " + sig.direction + " CANDIDATE (" + sig.confidence + "%)" : "🟡 HOLD"}`
   );
+}
+
+function modeKeyboard() {
+  return new InlineKeyboard()
+    .text("PAPER", "mode_paper")
+    .text("TESTNET", "mode_testnet")
+    .row()
+    .text("LIVE", "mode_live");
+}
+
+function modeText(user: NonNullable<Awaited<ReturnType<typeof requireUser>>>) {
+  return `Режим: <b>${user.tradingMode}</b>\nLIVE confirm: ${user.liveConfirmedAt ? "yes" : "no"}`;
 }
 
 function riskText(user: NonNullable<Awaited<ReturnType<typeof requireUser>>>) {

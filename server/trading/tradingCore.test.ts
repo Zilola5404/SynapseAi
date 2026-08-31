@@ -3,7 +3,11 @@ import type { RiskSettings, User } from "@prisma/client";
 import { sizePosition } from "./risk/PositionSizer.js";
 import { evaluateRisk } from "./risk/RiskEngine.js";
 import { applyPaperFill, SLIPPAGE, TAKER_FEE } from "./execution/ExecutionProvider.js";
+import { paperExecution } from "./execution/PaperExecution.js";
+import { canTransition, makeClientOrderId } from "./execution/orderState.js";
 import { strategyEngine } from "./strategy/StrategyEngine.js";
+import { roundQty, roundPrice, meetsMinNotional } from "../exchanges/binance/precision.js";
+import { withSymbolLock, isLocked } from "./locks/TradeLock.js";
 import type { MarketSnapshot, StrategySignal } from "./types.js";
 
 const sized = sizePosition({
@@ -139,4 +143,49 @@ const short = strategyEngine.evaluate(bear, { ...bear, timeframe: "15M" }, { ...
 assert.ok(short);
 assert.equal(short?.direction, "SHORT");
 
-console.log("  PASS  Trading core: sizer, paper fill, risk, strategy");
+assert.equal(
+  evaluateRisk({
+    user,
+    risk,
+    signal,
+    equity: 10000,
+    openCount: 0,
+    openExposureUsdt: 0,
+    realizedPnl24h: 0,
+    circuitOpen: true,
+    circuitReason: "timeout",
+  }).allowed,
+  false
+);
+
+assert.equal(canTransition("NEW", "VALIDATED"), true);
+assert.equal(canTransition("FILLED", "NEW"), false);
+assert.equal(canTransition("SUBMITTED", "FILLED"), true);
+assert.ok(makeClientOrderId("ENTRY").length <= 36);
+
+assert.ok(roundQty("BTCUSDT", 0.0015) <= 0.0015);
+assert.ok(roundPrice("BTCUSDT", 108250.37) <= 108250.37);
+assert.equal(meetsMinNotional("BTCUSDT", 0.001, 108000), true);
+
+const closeFill = await paperExecution.closeMarket({
+  symbol: "ETHUSDT",
+  side: "SELL",
+  quantity: 1,
+  markPrice: 3200,
+  clientOrderId: "PAPERTEST1",
+});
+assert.equal(closeFill.status, "FILLED");
+assert.equal(closeFill.isPaper, true);
+assert.ok(closeFill.feesUsdt > 0);
+
+await withSymbolLock("u1", "BTCUSDT", async () => {
+  assert.equal(isLocked("u1", "BTCUSDT"), true);
+});
+assert.equal(isLocked("u1", "BTCUSDT"), false);
+await assert.rejects(async () => {
+  await withSymbolLock("u1", "ETHUSDT", async () => {
+    await withSymbolLock("u1", "ETHUSDT", async () => undefined);
+  });
+});
+
+console.log("  PASS  Trading core: sizer, paper fill, risk, strategy, orders, precision, locks");

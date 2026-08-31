@@ -41,7 +41,12 @@ model User {
   lastScanAt              DateTime?
   peakEquityUsdt          Float   @default(10000)
   paperBalanceUsdt        Float   @default(10000)
+  testnetEquityUsdt       Float   @default(0)
+  liveEquityUsdt          Float   @default(0)
+  liveConfirmedAt         DateTime?
   signals                 Signal[]
+  exchangeOrders          ExchangeOrder[]
+  circuitBreaker          CircuitBreakerState?
 
   @@map("users")
 }
@@ -106,11 +111,62 @@ model ActivePosition {
   aiRationale        String   @default("")
   aiConfidence       Int      @default(0)
   riskLevel          String   @default("MEDIUM")
+  status             String   @default("OPEN")
+  closeRequestedAt   DateTime?
   openedAt           DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  @@index([userId, symbol])
+  @@unique([userId, symbol])
+  @@index([userId, status])
   @@map("active_positions")
+}
+
+model ExchangeOrder {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  positionId      String?
+  symbol          String
+  side            String
+  type            String
+  purpose         String
+  status          String   @default("NEW")
+  clientOrderId   String   @unique
+  exchangeOrderId String?
+  price           Float?
+  quantity        Float
+  executedQty     Float    @default(0)
+  avgFillPrice    Float?
+  feesUsdt        Float    @default(0)
+  lastError       String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, symbol, status])
+  @@map("exchange_orders")
+}
+
+model CircuitBreakerState {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        String    @default("CLOSED")
+  reason        String    @default("")
+  openedAt      DateTime?
+  cooldownUntil DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("circuit_breaker_states")
+}
+
+model WorkerHealth {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  status     String
+  lastBeatAt DateTime @default(now())
+  details    String   @default("")
+
+  @@map("worker_health")
 }
 
 model OrderHistory {

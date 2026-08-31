@@ -1,20 +1,22 @@
 import WebSocket from "ws";
 import { createListenKey, keepaliveListenKey } from "../binance.js";
 import { logger } from "../logger.js";
+import { tradingOrchestrator } from "../trading/orchestrator/TradingOrchestrator.js";
 import { prisma } from "../db.js";
-import { closePosition } from "../services/orderService.js";
-import { notifyUser } from "../telegram/notify.js";
 
-/**
- * User Data Stream: ORDER_TRADE_UPDATE / ACCOUNT_UPDATE.
- * Синхронизирует закрытие позиции, если ордер закрыт на бирже вручную.
- */
+const streams = new Map<string, () => void>();
+
+export function userStreamCount() {
+  return streams.size;
+}
+
 export async function startUserDataStream(params: {
   userId: string;
   apiKey: string;
   isTestnet: boolean;
   isFutures: boolean;
 }): Promise<() => void> {
+  stopUserDataStream(params.userId);
   const listenKey = await createListenKey({
     apiKey: params.apiKey,
     isTestnet: params.isTestnet,
@@ -43,22 +45,32 @@ export async function startUserDataStream(params: {
   ws.on("message", async (buf) => {
     try {
       const msg = JSON.parse(buf.toString());
-      if (msg.e === "ORDER_TRADE_UPDATE" && (msg.o?.X === "FILLED" || msg.o?.X === "CANCELED")) {
-        const symbol = msg.o?.s;
-        if (!symbol) return;
-        const pos = await prisma.activePosition.findFirst({
-          where: { userId: params.userId, symbol },
-        });
-        if (pos && msg.o?.x === "TRADE" && msg.o?.X === "FILLED" && msg.o?.rp) {
-          const realized = parseFloat(msg.o.rp);
-          if (Math.abs(realized) > 0 && pos) {
-            await closePosition({
-              userId: params.userId,
-              positionId: pos.id,
-              reason: "MANUAL",
-              exitPrice: parseFloat(msg.o.ap || pos.currentPrice),
-            });
-            await notifyUser(params.userId, `Binance User Stream: позиция ${symbol} закрыта на бирже.`);
+      if (msg.e === "ORDER_TRADE_UPDATE") {
+        const o = msg.o || {};
+        const status = o.X;
+        const execType = o.x;
+        if (execType === "TRADE" && (status === "FILLED" || status === "PARTIALLY_FILLED")) {
+          await tradingOrchestrator.onExchangeFill({
+            userId: params.userId,
+            symbol: o.s,
+            avgPrice: parseFloat(o.ap || o.L || "0"),
+            qty: parseFloat(o.z || o.l || "0"),
+            realizedPnl: parseFloat(o.rp || "0"),
+            commission: parseFloat(o.n || "0"),
+            reduceOnly: Boolean(o.R),
+            orderId: String(o.i || ""),
+          });
+        }
+      }
+      if (msg.e === "ACCOUNT_UPDATE") {
+        const bal = (msg.a?.B || []).find((b: any) => b.a === "USDT");
+        const equity = bal ? parseFloat(bal.wb || bal.cw || "0") : 0;
+        if (equity > 0) {
+          const user = await prisma.user.findUnique({ where: { id: params.userId } });
+          if (user?.tradingMode === "LIVE") {
+            await prisma.user.update({ where: { id: params.userId }, data: { liveEquityUsdt: equity } });
+          } else if (user?.tradingMode === "TESTNET") {
+            await prisma.user.update({ where: { id: params.userId }, data: { testnetEquityUsdt: equity } });
           }
         }
       }
@@ -67,9 +79,26 @@ export async function startUserDataStream(params: {
     }
   });
   ws.on("error", (err) => logger.warn({ err: err.message }, "User Data Stream error"));
+  ws.on("close", () => logger.warn({ userId: params.userId }, "User Data Stream closed"));
 
-  return () => {
+  const stop = () => {
     clearInterval(keepAlive);
-    ws.close();
+    try {
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+    streams.delete(params.userId);
   };
+  streams.set(params.userId, stop);
+  return stop;
+}
+
+export function stopUserDataStream(userId: string) {
+  streams.get(userId)?.();
+}
+
+export function stopAllUserDataStreams() {
+  for (const stop of streams.values()) stop();
+  streams.clear();
 }

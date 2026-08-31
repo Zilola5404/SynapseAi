@@ -21,8 +21,9 @@ import { authRouter } from "./server/routes/auth.js";
 import { credentialsRouter } from "./server/routes/credentials.js";
 import { tradingRouter } from "./server/routes/trading.js";
 import { startTelegramBot } from "./server/telegram/bot.js";
-import { startTradingEngine } from "./server/services/tradingEngine.js";
+import { startTradingEngine, stopTradingEngine } from "./server/services/tradingEngine.js";
 import { runHistoricalBacktest } from "./server/trading/backtest/BacktestEngine.js";
+import { healthRouter } from "./server/routes/health.js";
 
 dotenv.config({ quiet: true });
 
@@ -30,6 +31,7 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+app.use("/api", healthRouter);
 
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/credentials", credentialsRouter);
@@ -992,6 +994,15 @@ async function boot() {
   logger.info("Запуск HTTP-сервера (Vite в dev может занять несколько секунд)...");
   await startServer();
 }
+
+async function shutdown(signal: string) {
+  logger.info({ signal }, "Graceful shutdown");
+  await stopTradingEngine();
+  process.exit(0);
+}
+
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 boot().catch((err) => {
   logger.error({ err }, "Не удалось запустить сервер");
