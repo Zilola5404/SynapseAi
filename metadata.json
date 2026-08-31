@@ -1,0 +1,6 @@
+{
+  "name": "Smart Crypto AI Trader",
+  "description": "Автономный крипто-трейдер с AI-аналитикой рынка, автоматическим управлением рисками и интерактивным контролем стратегий.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String?  @unique
+  name           String?
+  passwordHash   String?
+  telegramId     String?  @unique
+  telegramChatId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  credentials    ExchangeCredential?
+  riskSettings   RiskSettings?
+  positions      ActivePosition[]
+  orders         OrderHistory[]
+  logs           SystemLog[]
+
+  // strategy / agent settings (часть профиля пользователя по ТЗ)
+  strategyMode            String  @default("BALANCED")
+  tradingPairs            String[] @default(["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+  aiConfidenceThreshold   Int     @default(75)
+  scanIntervalSeconds     Int     @default(10)
+  technicalWeight         Int     @default(50)
+  sentimentWeight         Int     @default(30)
+  onChainWeight           Int     @default(20)
+  customInstructions      String  @default("Торгуй по тренду с контролем рисков")
+  autoTradeEnabled        Boolean @default(false)
+  lastScanAt              DateTime?
+  peakEquityUsdt          Float   @default(10000)
+  paperBalanceUsdt        Float   @default(10000)
+
+  @@map("users")
+}
+
+model ExchangeCredential {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKeyEncrypted    String
+  apiSecretEncrypted String
+  apiKeyMask         String
+  isTestnet          Boolean  @default(true)
+  tradingType        String   @default("FUTURES")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("exchange_credentials")
+}
+
+model RiskSettings {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  maxDailyLossPct      Float    @default(3)
+  maxDrawdownPct       Float    @default(8)
+  maxPositionSizePct   Float    @default(5)
+  maxLeverage          Int      @default(10)
+  maxOpenPositions     Int      @default(3)
+  defaultStopLossPct   Float    @default(2)
+  defaultTakeProfitPct Float    @default(5)
+  enableTrailingStop   Boolean  @default(true)
+  trailingStopPct      Float    @default(1.5)
+  emergencyKillSwitch  Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("risk_settings")
+}
+
+model ActivePosition {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol             String
+  side               String
+  entryPrice         Float
+  currentPrice       Float
+  sizeUsdt           Float
+  marginUsdt         Float
+  quantity           Float
+  leverage           Int
+  liquidationPrice   Float
+  stopLossPrice      Float
+  takeProfitPrice    Float
+  trailingStopPct    Float?
+  exchangeOrderId    String?
+  slOrderId          String?
+  tpOrderId          String?
+  isPaperTrade       Boolean  @default(true)
+  aiRationale        String   @default("")
+  aiConfidence       Int      @default(0)
+  riskLevel          String   @default("MEDIUM")
+  openedAt           DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId, symbol])
+  @@map("active_positions")
+}
+
+model OrderHistory {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol          String
+  side            String
+  entryPrice      Float
+  exitPrice       Float?
+  sizeUsdt        Float
+  quantity        Float    @default(0)
+  leverage        Int
+  pnl             Float    @default(0)
+  pnlPct          Float    @default(0)
+  commissionUsdt  Float    @default(0)
+  status          String   @default("FILLED")
+  exitReason      String?
+  exchangeOrderId String?
+  isPaperTrade    Boolean  @default(true)
+  aiConfidence    Int      @default(0)
+  openedAt        DateTime @default(now())
+  closedAt        DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("order_history")
+}
+
+model SystemLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  level      String
+  pair       String   @default("SYSTEM")
+  action     String
+  details    String
+  reasoning  String   @default("")
+  confidence Int?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([level, createdAt])
+  @@map("system_logs")
+}
