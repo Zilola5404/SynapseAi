@@ -23,7 +23,18 @@ const withFunding = computeTradePnl({
   exitFeeUsdt: 1,
   fundingUsdt: 0.5,
 });
-assert.equal(withFunding.netPnl, 17.5);
+assert.equal(withFunding.netPnl, 18.5);
+
+const paidFunding = computeTradePnl({
+  side: "LONG",
+  entryPrice: 100,
+  exitPrice: 102,
+  quantity: 10,
+  entryFeeUsdt: 1,
+  exitFeeUsdt: 1,
+  fundingUsdt: -0.5,
+});
+assert.equal(paidFunding.netPnl, 17.5);
 
 const loss = computeTradePnl({
   side: "LONG",

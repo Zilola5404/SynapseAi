@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { summarizeStrategyValidation } from "./setupStats.js";
+import { summarizeStrategyValidation, calibrateFactor } from "./setupStats.js";
 
 const empty = summarizeStrategyValidation([]);
 assert.equal(empty["A+"].trades, 0);
@@ -18,5 +18,22 @@ assert.equal(mixed["A+"].netPnl, 5);
 assert.ok(mixed["A+"].profitFactor > 1);
 assert.equal(mixed.A.trades, 2);
 assert.equal(mixed.sampleTooSmall, true);
+
+const cal = calibrateFactor(
+  [
+    { pnl: 10, factors: { liquidity: true } },
+    { pnl: 8, factors: { liquidity: true } },
+    { pnl: 6, factors: { liquidity: true } },
+    { pnl: 4, factors: { liquidity: true } },
+    { pnl: 2, factors: { liquidity: true } },
+    { pnl: -4, factors: { liquidity: false } },
+    { pnl: -3, factors: { liquidity: false } },
+    { pnl: -2, factors: { liquidity: false } },
+    { pnl: -1, factors: { liquidity: false } },
+    { pnl: -5, factors: { liquidity: false } },
+  ],
+  "liquidity"
+);
+assert.equal(cal.improvesExpectancy, true);
 
 console.log("  PASS  Strategy grade stats aggregator");

@@ -77,8 +77,8 @@ export function tradeClosedMessage(
         : `\n💳 Комиссия: ${money(-Math.abs(p.fees))}`;
   const fundingLine =
     lang === "en"
-      ? `\n💧 Funding: ${money(-(p.funding || 0))} (not applied yet)`
-      : `\n💧 Funding: ${money(-(p.funding || 0))} (пока не учитывается)`;
+      ? `\n💧 Funding: ${money(p.funding || 0)} (received +, paid −)`
+      : `\n💧 Funding: ${money(p.funding || 0)} (получено +, уплачено −)`;
   const gross =
     p.grossPnl != null
       ? lang === "en"

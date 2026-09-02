@@ -1,61 +1,40 @@
 # SYNAPSEAI STRATEGY VALIDATION
 
-**Period:** 2026-08 → 2026-09-02 (доступная история репозитория + PostgreSQL)  
-**Вердикт:** выборки **недостаточно**, чтобы утверждать, что A+ статистически лучше A.
+**Period:** historical walk 2026-09-02 (public USD-M klines, ~15 days of 5m) + Testnet Demo fills  
+**Вердикт:** **A+ не доказан лучше A.** OOS пустой. LIVE не готов.
 
-Цифры ниже — честный срез. Это **не** доказательство edge.
+Источник: `scripts/run-backtest.ts` → `reports/backtest-results.md`
 
-## Как считаем
+## Historical walk (fees + slippage, no lookahead, 50/25/25)
 
-Источник: `server/trading/strategy/setupStats.ts`
+| Grade | Trades | Win Rate | Profit Factor | Expectancy | Average R | Max DD (USDT path) | Net |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| A+ | 1 | 100% | n/a | +34.02 | 0.73 | 0 | +34.02 |
+| A | 38 | 57.9% | 2.08 | +7.21 | 0.20 | -138.48 | +274.13 |
+| B | 0 | — | — | — | — | — | — |
 
-- Win Rate = wins / trades  
-- Profit Factor = gross wins / |gross losses|  
-- Expectancy = mean net PnL  
-- Max Drawdown = min running equity (по последовательности сделок grade)  
-- Average R — только если у сделки есть `rMultiple`  
-- Fees суммируются отдельно  
+B в live engine = NO TRADE, поэтому 0 исполнений ожидаемо.
 
-Auto-режим открывает **только A+**. A и B в live auto не копятся сами — это снижает сравнимость.
+Train 33 / Validation 6 / **OOS 0**.
 
-## A+ SETUPS
+## Acceptance P2
 
-Trades: недостаточно закрытых сделок с тегом A+ в `order_history` (история Testnet certification — ручной `TEST_ORDER`, не рыночный A+ сетап).
+- ≥30 A+ closed: **NO** (1)  
+- ≥30 A closed: **YES** (38) on backtest fills, not live  
+- A+ better expectancy and PF with adequate sample: **NO**
 
-Win Rate: n/a  
-Profit Factor: n/a  
-Expectancy: n/a  
-Max Drawdown: n/a  
+## Confluence (train only, weights not changed)
 
-Live Testnet certification fills 2026-09-02 (ручной TEST ORDER, grade в сигнале A+ формально): 2 закрытия, оба небольшие убытки из-за спреда/комиссии на min лоте (~ −0.42 и ~ −0.18 USDT). Это **не** статистика стратегии.
+Improves expectancy on train when ON vs OFF (n ON and OFF ≥5): **structure**, **volume**.  
+**liquidity** was ON in 0 train trades — нельзя калибровать.  
+OOS: нет сделок, калибровка не подтверждена.
 
-## A SETUPS
+Не меняли веса под одну историю.
 
-Trades: 0 tagged closed trades в этом срезе.
+## Testnet live (not strategy)
 
-## B SETUPS
+Ручные TEST ORDER / TP ladder — инфраструктура, не A+ edge.
 
-Trades: 0 tagged closed trades в этом срезе.
+## Paper / Testnet AUTO soak
 
-## PAPER
-
-Есть PAPER soak-гейт (`paperSoak.ts`): цель 10–20 закрытий со SL **и** TP, без stuck CLOSING и дублей. Готовность к Testnet soak по этому гейту — отдельный флаг `readyForTestnet`, не путать с «A+ > A».
-
-## Backtest / lookahead
-
-- Walk-forward + three-way split: `server/trading/backtest/mtf.ts` unit PASS  
-- No lookahead: `server/trading/certification/noLookahead.test.ts` PASS  
-- Полный out-of-sample backtest с метриками A+ vs A **не прогонялся** на длинной истории (нет достаточного tagged dataset)
-
-## Acceptance P3
-
-| Критерий | Статус |
-|---|---|
-| No lookahead bias (unit) | PASS |
-| Backtest helpers | PASS |
-| Out-of-sample completed | **FAIL** — нет полного OOS прогона |
-| A+ statistics available | **FAIL** — sample too small |
-| A statistics available | **FAIL** — sample too small |
-| Expectancy calculated | код есть; live sample too small |
-
-Повторить, когда накопится ≥30 закрытых сделок каждого класса A+ и A (PAPER soak, затем Testnet soak).
+Не набраны (P7/P8). См. `reports/production-readiness.md`.

@@ -45,6 +45,10 @@ export class MarketDataCircuit {
     return this.dataState() === "DATA_FRESH";
   }
 
+  touchSuccess() {
+    this.lastSuccessAt = Date.now();
+  }
+
   recordSuccess() {
     const was = this.degraded;
     this.consecutiveFailures = 0;
@@ -105,6 +109,10 @@ export class MarketDataProvider {
 
   canOpenNewTrades() {
     return this.circuit.canOpenNewTrades();
+  }
+
+  touchSuccess() {
+    this.circuit.touchSuccess();
   }
 
   async fetchKlines(params: {

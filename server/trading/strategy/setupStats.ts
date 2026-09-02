@@ -79,3 +79,36 @@ export function summarizeStrategyValidation(trades: GradedTrade[]) {
     sampleTooSmall: trades.filter((t) => t.grade === "A+" || t.grade === "A").length < 30,
   };
 }
+
+export function expectancyOf(trades: { pnl: number }[]) {
+  if (!trades.length) return 0;
+  return trades.reduce((s, t) => s + t.pnl, 0) / trades.length;
+}
+
+export function profitFactorOf(trades: { pnl: number }[]) {
+  const wins = trades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
+  const losses = Math.abs(trades.filter((t) => t.pnl < 0).reduce((s, t) => s + t.pnl, 0));
+  if (losses > 0) return wins / losses;
+  return wins > 0 ? Infinity : 0;
+}
+
+/** Train-only view: does the factor being ON improve expectancy vs OFF? Does not retune weights. */
+export function calibrateFactor(
+  trades: { pnl: number; factors: Record<string, boolean> }[],
+  key: string
+) {
+  const on = trades.filter((t) => t.factors[key]);
+  const off = trades.filter((t) => !t.factors[key]);
+  const expOn = expectancyOf(on);
+  const expOff = expectancyOf(off);
+  return {
+    key,
+    onTrades: on.length,
+    offTrades: off.length,
+    expectancyOn: expOn,
+    expectancyOff: expOff,
+    profitFactorOn: profitFactorOf(on),
+    profitFactorOff: profitFactorOf(off),
+    improvesExpectancy: on.length >= 5 && off.length >= 5 && expOn > expOff,
+  };
+}

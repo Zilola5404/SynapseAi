@@ -135,7 +135,8 @@ export class BinanceExecution implements ExecutionProvider {
     const positions = await getPositionRisk(this.apiKey, this.apiSecret, this.isTestnet, params.symbol);
     const row = positions.find((p) => p.symbol === params.symbol.replace("/", "").toUpperCase());
     const amt = row ? Math.abs(row.positionAmt) : params.quantity;
-    const qty = roundQty(params.symbol, amt || params.quantity, this.isTestnet);
+    const requested = params.quantity > 0 ? params.quantity : amt;
+    const qty = roundQty(params.symbol, Math.min(amt, requested) || amt, this.isTestnet);
     if (qty <= 0) {
       return {
         orderId: "FLAT",

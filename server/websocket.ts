@@ -153,6 +153,7 @@ class BinanceStreamManager {
       volume24h: parseFloat(raw.q),
       timestamp: Date.now(),
     };
+    marketDataProvider.touchSuccess();
     this.scheduleNotification();
   }
 

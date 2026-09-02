@@ -521,3 +521,53 @@ export async function commissionForOrder(params: {
   const feesUsdt = trades.reduce((s, t) => s + t.commission, 0);
   return { feesUsdt, avgPrice: qty > 0 ? notional / qty : 0, qty };
 }
+
+export async function getFuturesIncome(params: {
+  apiKey: string;
+  apiSecret: string;
+  isTestnet: boolean;
+  symbol?: string;
+  incomeType?: string;
+  startTime?: number;
+  endTime?: number;
+  limit?: number;
+}): Promise<{ symbol: string; income: number; time: number; incomeType: string }[]> {
+  const r = await signed({
+    method: "GET",
+    path: "/fapi/v1/income",
+    query: {
+      symbol: params.symbol ? params.symbol.replace("/", "").toUpperCase() : undefined,
+      incomeType: params.incomeType || "FUNDING_FEE",
+      startTime: params.startTime,
+      endTime: params.endTime,
+      limit: params.limit || 1000,
+    },
+    apiKey: params.apiKey,
+    apiSecret: params.apiSecret,
+    isTestnet: params.isTestnet,
+  });
+  if (!r.ok) throw new Error(`income ${r.status}: ${r.text}`);
+  const rows = Array.isArray(r.data) ? r.data : [];
+  return rows.map((row: any) => ({
+    symbol: String(row.symbol || params.symbol || ""),
+    income: parseFloat(row.income || "0"),
+    time: Number(row.time || 0),
+    incomeType: String(row.incomeType || params.incomeType || "FUNDING_FEE"),
+  }));
+}
+
+export async function sumFundingForPosition(params: {
+  apiKey: string;
+  apiSecret: string;
+  isTestnet: boolean;
+  symbol: string;
+  startTime: number;
+  endTime: number;
+}) {
+  const rows = await getFuturesIncome({
+    ...params,
+    incomeType: "FUNDING_FEE",
+    limit: 1000,
+  });
+  return rows.reduce((s, r) => s + r.income, 0);
+}

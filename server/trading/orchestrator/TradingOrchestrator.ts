@@ -19,6 +19,7 @@ import type { ExecutionProvider } from "../execution/ExecutionProvider.js";
 import { TAKER_FEE } from "../execution/ExecutionProvider.js";
 import { filterSignal } from "../../ai/AIContextFilter.js";
 import { getDecryptedCredentials, resolveTestnetCredentials } from "../../services/credentialService.js";
+import { sumFundingForPosition } from "../../exchanges/binance/futuresClient.js";
 import { binanceWsManager } from "../../websocket.js";
 import { realizedPnl24h } from "../../services/orderService.js";
 import { equityForUser } from "../equity.js";
@@ -32,7 +33,7 @@ import { INTEL } from "../intelligence/config.js";
 import { TP_SCALE_OUT } from "../tpPolicy.js";
 import { KILL_SWITCH_POLICY } from "../killSwitchPolicy.js";
 import { fetchLastPrice } from "../../market/markPrice.js";
-import { minTradeQty, splitScaleOutQty } from "../../exchanges/binance/precision.js";
+import { minTradeQty, splitScaleOutQty, roundQty } from "../../exchanges/binance/precision.js";
 import { runTestnetPreflight } from "../certification/testnetPreflight.js";
 import { formatPositionMismatch } from "../reconciliation.js";
 import type { StrategySignal, TradingMode } from "../types.js";
@@ -165,7 +166,7 @@ export class TradingOrchestrator {
   }
 
   /** Manual TESTNET-only min order. Telegram `/testorder`. */
-  async placeCertifiedTestOrder(userId: string, symbol = "BTCUSDT") {
+  async placeCertifiedTestOrder(userId: string, symbol = "BTCUSDT", opts?: { quantity?: number }) {
     const user = await prisma.user.findUnique({ where: { id: userId }, include: { riskSettings: true } });
     if (!user?.riskSettings) throw new Error("Нет профиля риска");
     const keys = await resolveTestnetCredentials(userId);
@@ -184,7 +185,7 @@ export class TradingOrchestrator {
     }
     const mark = pre.price || (await fetchLastPrice(symbol));
     if (!mark) throw new Error("Нет цены BTCUSDT — нет ордера");
-    const qty = pre.qty || minTradeQty(symbol, mark, true);
+    const qty = (opts?.quantity && opts.quantity > 0 ? opts.quantity : 0) || pre.qty || minTradeQty(symbol, mark, true);
     if (qty <= 0) throw new Error("Не удалось подобрать минимальный лот BTCUSDT");
     const sl = Number((mark * 0.985).toFixed(2));
     const tp1 = Number((mark * 1.004).toFixed(2));
@@ -886,6 +887,24 @@ export class TradingOrchestrator {
     }
 
     const entryFee = current.entryFeeUsdt || 0;
+    let fundingUsdt = 0;
+    if (!current.isPaperTrade) {
+      try {
+        const creds = await getDecryptedCredentials(pos.userId);
+        if (creds) {
+          fundingUsdt = await sumFundingForPosition({
+            apiKey: creds.apiKey,
+            apiSecret: creds.apiSecret,
+            isTestnet: true,
+            symbol: current.symbol,
+            startTime: current.openedAt.getTime(),
+            endTime: Date.now(),
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, symbol: current.symbol }, "funding income unavailable — recorded as 0");
+      }
+    }
     const priced = computeTradePnl({
       side: current.side,
       entryPrice: current.entryPrice,
@@ -893,6 +912,7 @@ export class TradingOrchestrator {
       quantity: current.quantity,
       entryFeeUsdt: entryFee,
       exitFeeUsdt: feesUsdt,
+      fundingUsdt,
     });
     const pnl = priced.netPnl;
     const closedAt = new Date();
@@ -1014,9 +1034,9 @@ export class TradingOrchestrator {
       level: "TRADE",
       pair: pos.symbol,
       action: "POSITION_CLOSED",
-      details: `${reason} exit=${exitPrice} gross=${priced.grossPnl.toFixed(2)} entryFee=${priced.entryFee} exitFee=${priced.exitFee} net=${pnl.toFixed(2)}`,
+      details: `${reason} exit=${exitPrice} gross=${priced.grossPnl.toFixed(2)} fees=${priced.totalFees} funding=${priced.fundingUsdt} net=${pnl.toFixed(2)}`,
     });
-    return { pnl, reason, feesUsdt: priced.totalFees, exitPrice, grossPnl: priced.grossPnl, entryFee: priced.entryFee, exitFee: priced.exitFee };
+    return { pnl, reason, feesUsdt: priced.totalFees, exitPrice, grossPnl: priced.grossPnl, entryFee: priced.entryFee, exitFee: priced.exitFee, fundingUsdt: priced.fundingUsdt };
   }
 
   async isFlatOnExchange(userId: string, symbol: string): Promise<boolean> {
@@ -1301,6 +1321,68 @@ export class TradingOrchestrator {
         await prisma.activePosition.update({ where: { id: pos.id }, data: { stopLossPrice: sl, currentPrice: price } });
       }
     }
+  }
+
+  async scaleOutQty(userId: string, positionId: string, qty: number, reason: string) {
+    const pos = await prisma.activePosition.findFirst({ where: { id: positionId, userId } });
+    if (!pos || pos.status === "CLOSED") return null;
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const mark = binanceWsManager.getPrice(pos.symbol) || pos.currentPrice;
+    const cut = roundQty(pos.symbol, qty, !pos.isPaperTrade);
+    if (cut <= 0) throw new Error("scale-out qty too small");
+    if (cut >= pos.quantity - 1e-8) {
+      return this.closePosition(userId, pos.id, reason);
+    }
+    if (pos.isPaperTrade) {
+      return this.scaleOutPaper(pos, cut / pos.quantity, reason, mark);
+    }
+    const exec = await providerFor(user);
+    await exec.cancelProtective?.({ symbol: pos.symbol, slOrderId: pos.slOrderId, tpOrderId: pos.tpOrderId });
+    const fill = await exec.closeMarket({
+      symbol: pos.symbol,
+      side: pos.side === "LONG" ? "BUY" : "SELL",
+      quantity: cut,
+      markPrice: mark,
+      clientOrderId: `SCALE${pos.id.slice(-8)}${Date.now().toString(36)}`.slice(0, 36),
+      reduceOnly: true,
+    });
+    if (fill.status !== "FILLED" && fill.quantity <= 0) {
+      throw new Error(`Scale-out not filled: ${fill.status}`);
+    }
+    const remainQty = Number((pos.quantity - (fill.quantity || cut)).toFixed(8));
+    const remainSize = remainQty * pos.entryPrice;
+    const remainMargin = pos.marginUsdt * (remainQty / pos.quantity);
+    const plan = parseIntelPlan(pos.aiRationale) || { hits: 0, tp1: pos.takeProfitPrice, tp2: pos.takeProfitPrice, tp3: null };
+    plan.hits = (plan.hits || 0) + 1;
+    const marker = pos.aiRationale?.includes("__PLAN__")
+      ? pos.aiRationale.replace(/__PLAN__.*/, `__PLAN__${JSON.stringify(plan)}`)
+      : `${pos.aiRationale || ""}\n__PLAN__${JSON.stringify(plan)}`;
+    await prisma.activePosition.update({
+      where: { id: pos.id },
+      data: {
+        quantity: remainQty,
+        sizeUsdt: remainSize,
+        marginUsdt: remainMargin,
+        currentPrice: fill.fillPrice || mark,
+        aiRationale: marker,
+        status: "OPEN",
+      },
+    });
+    await writeSystemLog({
+      userId,
+      level: "TRADE",
+      pair: pos.symbol,
+      action: "SCALE_OUT",
+      details: `${reason} closed=${fill.quantity || cut} remain=${remainQty} order=${fill.orderId}`,
+    });
+    const risk = await this.isFlatOnExchange(userId, pos.symbol);
+    return {
+      remainQty,
+      closedQty: fill.quantity || cut,
+      orderId: fill.orderId,
+      fillPrice: fill.fillPrice,
+      exchangeFlat: risk,
+    };
   }
 
   async scaleOutPaper(pos: ActivePosition, fraction: number, reason: string, markPrice: number) {

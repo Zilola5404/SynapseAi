@@ -28,6 +28,7 @@ const tests = [
   "server/trading/certification/safetyGates.test.ts",
   "server/trading/reconciliation.test.ts",
   "server/trading/strategy/setupStats.test.ts",
+  "server/trading/backtest/universeWalk.test.ts",
 ];
 
 async function runFile(file: string): Promise<number> {
