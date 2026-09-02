@@ -122,7 +122,11 @@ const extreme = evaluateIntelligence({
     m15: { ...bull, timeframe: "15M" },
     m5: { ...bull, timeframe: "5M", volatility: "EXTREME" },
   },
-  btc: riskOff,
+  btc: {
+    d1: { ...bull, trend: "BEARISH", volatility: "HIGH" },
+    h4: { ...bull, trend: "BEARISH", volatility: "HIGH" },
+    h1: { ...bull, trend: "BEARISH" },
+  },
 });
 assert.equal(extreme.decision, "NO_TRADE");
 assert.ok(extreme.vetoes.length > 0);

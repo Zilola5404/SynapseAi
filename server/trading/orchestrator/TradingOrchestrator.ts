@@ -576,14 +576,9 @@ export class TradingOrchestrator {
         positionSize: risk.sizeUsdt,
         result: "OPEN",
       };
-      const journal = (prisma as { tradeAnalysis?: { create: (args: { data: typeof analysis }) => Promise<unknown> } }).tradeAnalysis;
-      if (journal) {
-        await journal.create({ data: analysis }).catch(() =>
-          writeSystemLog({ userId, level: "TRADE", pair: signal.symbol, action: "TRADE_ANALYSIS", details: JSON.stringify(analysis) })
-        );
-      } else {
-        await writeSystemLog({ userId, level: "TRADE", pair: signal.symbol, action: "TRADE_ANALYSIS", details: JSON.stringify(analysis) });
-      }
+      await prisma.tradeAnalysis.create({ data: analysis }).catch(() =>
+        writeSystemLog({ userId, level: "TRADE", pair: signal.symbol, action: "TRADE_ANALYSIS", details: JSON.stringify(analysis) })
+      );
       const lang = await userLang(userId);
       await notifyEvent(
         userId,
@@ -1148,7 +1143,6 @@ export class TradingOrchestrator {
       quantity: qty,
       markPrice,
       clientOrderId: `SCALE${pos.id.slice(-8)}${Date.now().toString(36)}`.slice(0, 36),
-      reduceOnly: true,
     });
     const exitFee = fill.feesUsdt || qty * fill.fillPrice * TAKER_FEE;
     const entryFeeShare = (pos.entryFeeUsdt || 0) * (qty / pos.quantity);

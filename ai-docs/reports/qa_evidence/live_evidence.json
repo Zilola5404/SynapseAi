@@ -1,0 +1,421 @@
+{
+  "startedAt": "2026-09-02T10:44:31.206Z",
+  "env": {
+    "node": "v24.15.0",
+    "binanceUseTestnet": "true",
+    "envHasBinanceKey": false,
+    "envHasBinanceSecret": false,
+    "allowLive": false
+  },
+  "telegram": {
+    "http": 200,
+    "apiOk": true,
+    "username": "SynapseTradeAgent_bot",
+    "webhook": "",
+    "webhookCleared": true
+  },
+  "db": {
+    "connected": true,
+    "ping": [
+      {
+        "ok": 1
+      }
+    ],
+    "tables": [
+      "active_positions",
+      "circuit_breaker_states",
+      "exchange_credentials",
+      "exchange_orders",
+      "order_history",
+      "order_transitions",
+      "risk_settings",
+      "signals",
+      "system_logs",
+      "trade_analysis",
+      "users",
+      "worker_health"
+    ],
+    "hasTradeAnalysis": true,
+    "users": 3,
+    "encryptedCredentialRows": 1,
+    "openPositions": 1,
+    "secretLooksEncrypted": true
+  },
+  "market": {
+    "healthy": true,
+    "rows": [
+      {
+        "symbol": "BTCUSDT",
+        "interval": "1d",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788393599999,
+        "lastClose": 76551.9,
+        "ageSec": -47702,
+        "ms": 8413
+      },
+      {
+        "symbol": "BTCUSDT",
+        "interval": "4h",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788350399999,
+        "lastClose": 76552,
+        "ageSec": -4502,
+        "ms": 306
+      },
+      {
+        "symbol": "BTCUSDT",
+        "interval": "1h",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788346799999,
+        "lastClose": 76551.9,
+        "ageSec": -901,
+        "ms": 517
+      },
+      {
+        "symbol": "BTCUSDT",
+        "interval": "15m",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788346799999,
+        "lastClose": 76552,
+        "ageSec": -901,
+        "ms": 758
+      },
+      {
+        "symbol": "BTCUSDT",
+        "interval": "5m",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788346199999,
+        "lastClose": 76552,
+        "ageSec": -300,
+        "ms": 304
+      },
+      {
+        "symbol": "ETHUSDT",
+        "interval": "1d",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788393599999,
+        "lastClose": 2363.65,
+        "ageSec": -47700,
+        "ms": 318
+      },
+      {
+        "symbol": "ETHUSDT",
+        "interval": "4h",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788350399999,
+        "lastClose": 2363.65,
+        "ageSec": -4500,
+        "ms": 309
+      },
+      {
+        "symbol": "ETHUSDT",
+        "interval": "1h",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788346799999,
+        "lastClose": 2364.12,
+        "ageSec": -899,
+        "ms": 344
+      },
+      {
+        "symbol": "ETHUSDT",
+        "interval": "15m",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788346799999,
+        "lastClose": 2364.01,
+        "ageSec": -899,
+        "ms": 310
+      },
+      {
+        "symbol": "ETHUSDT",
+        "interval": "5m",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788346199999,
+        "lastClose": 2364.12,
+        "ageSec": -299,
+        "ms": 324
+      },
+      {
+        "symbol": "SOLUSDT",
+        "interval": "1d",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788393599999,
+        "lastClose": 98.01,
+        "ageSec": -47698,
+        "ms": 317
+      },
+      {
+        "symbol": "SOLUSDT",
+        "interval": "4h",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788350399999,
+        "lastClose": 98,
+        "ageSec": -4498,
+        "ms": 303
+      },
+      {
+        "symbol": "SOLUSDT",
+        "interval": "1h",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788346799999,
+        "lastClose": 98,
+        "ageSec": -898,
+        "ms": 306
+      },
+      {
+        "symbol": "SOLUSDT",
+        "interval": "15m",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788346799999,
+        "lastClose": 98,
+        "ageSec": -897,
+        "ms": 322
+      },
+      {
+        "symbol": "SOLUSDT",
+        "interval": "5m",
+        "ok": true,
+        "count": 80,
+        "lastCloseTime": 1788346199999,
+        "lastClose": 98.01,
+        "ageSec": -297,
+        "ms": 760
+      }
+    ],
+    "failed": 0
+  },
+  "intelligence": {
+    "marketDataOk": true,
+    "marketContext": "NEUTRAL",
+    "btcTrend1D": "BULLISH",
+    "btcTrend4H": "BULLISH",
+    "regime": "TRENDING",
+    "structure": "Режим: тренд",
+    "setup": "NONE",
+    "score": 4,
+    "grade": "NO_TRADE",
+    "decision": "NO_TRADE",
+    "volumeClass": "Объём не подтверждает движение",
+    "volumeOk": false,
+    "lines": [
+      {
+        "key": "btc",
+        "points": 2,
+        "max": 2,
+        "ok": true,
+        "textRu": "BTC поддерживает сценарий",
+        "textEn": "BTC supports the scenario"
+      },
+      {
+        "key": "h4",
+        "points": 2,
+        "max": 2,
+        "ok": true,
+        "textRu": "4H тренд совпадает",
+        "textEn": "4H trend agrees"
+      },
+      {
+        "key": "structure",
+        "points": 0,
+        "max": 2,
+        "ok": false,
+        "textRu": "1H структура не подтверждена",
+        "textEn": "1H structure not confirmed"
+      },
+      {
+        "key": "level",
+        "points": 0,
+        "max": 2,
+        "ok": false,
+        "textRu": "Нет работы от сильного уровня",
+        "textEn": "Not working from a strong level"
+      },
+      {
+        "key": "liquidity",
+        "points": 0,
+        "max": 2,
+        "ok": false,
+        "textRu": "Ликвидность не подтверждена (sweep без BOS не считается)",
+        "textEn": "Liquidity not confirmed (sweep alone is not a signal)"
+      },
+      {
+        "key": "bos",
+        "points": 0,
+        "max": 2,
+        "ok": false,
+        "textRu": "Нет BOS / CHoCH",
+        "textEn": "No BOS / CHoCH"
+      },
+      {
+        "key": "volume",
+        "points": 0,
+        "max": 1,
+        "ok": false,
+        "textRu": "Объём не подтверждает движение",
+        "textEn": "Volume does not confirm"
+      },
+      {
+        "key": "rr",
+        "points": 0,
+        "max": 2,
+        "ok": false,
+        "textRu": "Risk/Reward 0.0 ниже 2",
+        "textEn": "Risk/Reward 0.0 below 2"
+      }
+    ],
+    "vetoes": [
+      {
+        "textRu": "Нет сетапа Trend Pullback или Breakout+Retest",
+        "textEn": "No Trend Pullback or Breakout+Retest setup",
+        "ok": false
+      },
+      {
+        "textRu": "Confluence 4/15 — класс NO_TRADE, сделка не открывается",
+        "textEn": "Confluence 4/15 — grade NO_TRADE, no trade",
+        "ok": false
+      }
+    ],
+    "telegramNoTradePreview": "⏸ <b>СЕЙЧАС СДЕЛКУ НЕ ОТКРЫВАЕМ</b>\n\nSynapseAI проверил рынок.\n⭐ Последний confluence: 4 / 15\n\n⚠️ Нет сетапа Trend Pullback или Breakout+Retest\n⚠️ Confluence 4/15 — класс NO_TRADE, сделка не открывается\n\n🤖 Решение: не открывать сделку.\nПродолжаю анализировать рынок.",
+    "telegramSignalPreview": null,
+    "volumeMismatch": false,
+    "wouldSendBinanceOrder": false
+  },
+  "risk": {
+    "allowed": true,
+    "blocks": {
+      "killSwitch": {
+        "allowed": false,
+        "reason": "Kill switch активен."
+      },
+      "locked": {
+        "allowed": false,
+        "reason": "Аккаунт LOCKED после /panic. Нужно /unlock."
+      },
+      "scannerOff": {
+        "allowed": false,
+        "reason": "Автоторговля и сканер выключены."
+      },
+      "dailyLoss": {
+        "allowed": false,
+        "reason": "Дневной лимит убытка достигнут (3%)."
+      },
+      "maxPositions": {
+        "allowed": false,
+        "reason": "Лимит позиций 3/3"
+      },
+      "circuit": {
+        "allowed": false,
+        "reason": "Circuit breaker: qa"
+      },
+      "pause": {
+        "allowed": false,
+        "reason": "Пауза после серии убытков до 2026-09-02T10:46:05.899Z"
+      }
+    }
+  },
+  "sizing": [
+    {
+      "name": "wide_stop_5pct",
+      "entry": 100,
+      "sl": 95,
+      "sizeUsdt": 100,
+      "qty": 1,
+      "maxLossUsdt": 5,
+      "lossAtSl": 5,
+      "riskAmount": 5,
+      "roundTripFee": 0.08,
+      "lossPlusFees": 5.08,
+      "cappedBy": "none"
+    },
+    {
+      "name": "medium_stop_2pct",
+      "entry": 100,
+      "sl": 98,
+      "sizeUsdt": 250,
+      "qty": 2.5,
+      "maxLossUsdt": 5,
+      "lossAtSl": 5,
+      "riskAmount": 5,
+      "roundTripFee": 0.2,
+      "lossPlusFees": 5.2,
+      "cappedBy": "none"
+    },
+    {
+      "name": "short_stop_0_5pct",
+      "entry": 100,
+      "sl": 99.5,
+      "sizeUsdt": 300,
+      "qty": 3,
+      "maxLossUsdt": 1.5,
+      "lossAtSl": 1.5,
+      "riskAmount": 5,
+      "roundTripFee": 0.24,
+      "lossPlusFees": 1.74,
+      "cappedBy": "max_margin"
+    },
+    {
+      "name": "tiny_stop_min_qty",
+      "entry": 100,
+      "sl": 99.9,
+      "sizeUsdt": 300,
+      "qty": 3,
+      "maxLossUsdt": 0.3,
+      "lossAtSl": 0.3,
+      "riskAmount": 5,
+      "roundTripFee": 0.24,
+      "lossPlusFees": 0.54,
+      "cappedBy": "max_margin"
+    },
+    {
+      "name": "exposure_cap",
+      "entry": 100,
+      "sl": 98,
+      "maxNotional": 50,
+      "sizeUsdt": 50,
+      "qty": 0.5,
+      "maxLossUsdt": 1,
+      "lossAtSl": 1,
+      "riskAmount": 5,
+      "roundTripFee": 0.04,
+      "lossPlusFees": 1.04,
+      "cappedBy": "max_notional"
+    }
+  ],
+  "lookahead": {
+    "atT20": 2,
+    "atT30": 3,
+    "neverSeesFutureAtT20": true,
+    "split": {
+      "train": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "validation": [
+        6,
+        7
+      ],
+      "outOfSample": [
+        8,
+        9,
+        10
+      ]
+    }
+  },
+  "finishedAt": "2026-09-02T10:45:05.901Z"
+}

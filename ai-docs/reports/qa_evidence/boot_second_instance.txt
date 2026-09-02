@@ -1,0 +1,11 @@
+[BOOT] SynapseAI starting
+[DB] Connecting PostgreSQL...
+[DB] PostgreSQL connected
+[MARKET] Futures REST https://fapi.binance.com (not Spot api.binance.com)
+[RECOVERY] load modes, kill switch, positions, streams...
+[WORKERS] started
+[HTTP] starting (Vite may take a few seconds in dev)...
+[TELEGRAM] TELEGRAM_BOT_TOKEN present: YES
+[TELEGRAM:FATAL]
+Another SynapseAI bot instance is already running (pid 27100). Stop the other process.
+[HTTP:FATAL] Port 3000 already in use. Stop the other npm run dev.

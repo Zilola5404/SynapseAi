@@ -15,6 +15,7 @@ import { collectNoTradeReasons, tradeAllowed } from "./NoTradeEngine.js";
 import { buildTradePlan } from "./TradePlanEngine.js";
 import type { IntelligenceDecision, Reason } from "./types.js";
 import type { MarketSnapshot as Snap } from "../types.js";
+import { logger } from "../../logger.js";
 
 export type IntelligenceInput = {
   symbol: string;
@@ -185,6 +186,23 @@ export function evaluateIntelligence(input: IntelligenceInput): IntelligenceDeci
     !tradeAllowed(confluence.grade) ||
     regime.noNewTrades ||
     extra.some((e) => e.ok === false);
+
+  logger.info(
+    {
+      symbol,
+      marketContext: context.marketMode,
+      regime: regime.regime,
+      structure: structure.structure,
+      setup: setup?.type || "NONE",
+      score: confluence.total,
+      grade: confluence.grade,
+      decision: blocked ? "NO_TRADE" : "TRADE",
+      volumeClass: volume.klass,
+      volumeConfirms: volume.confirms,
+      rr: plan?.riskReward || 0,
+    },
+    "[INTELLIGENCE]"
+  );
 
   if (blocked) {
     return {
