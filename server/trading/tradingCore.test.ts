@@ -226,7 +226,7 @@ assert.ok(closeFill.feesUsdt > 0);
 await withSymbolLock("u1", "BTCUSDT", async () => {
   assert.equal(isLocked("u1", "BTCUSDT"), true);
 });
-assert.equal(typeof paperExecution.placeProtection, "undefined");
+assert.equal("placeProtection" in paperExecution, false);
 assert.equal(isLocked("u1", "BTCUSDT"), false);
 await assert.rejects(async () => {
   await withSymbolLock("u1", "ETHUSDT", async () => {

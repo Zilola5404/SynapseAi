@@ -85,6 +85,40 @@ export function meetsMinNotional(symbol: string, qty: number, price: number, isT
   return qty >= f.minQty && qty * price >= f.minNotional;
 }
 
+/** Smallest qty that satisfies LOT_SIZE + MIN_NOTIONAL at the given price. */
+export function minTradeQty(symbol: string, price: number, isTestnet = true): number {
+  const f = filtersFor(symbol, isTestnet);
+  let qty = f.minQty;
+  while (qty * price < f.minNotional && qty < f.maxQty) {
+    const next = roundToStep(qty + f.stepSize, f.stepSize);
+    if (next <= qty) break;
+    qty = next;
+  }
+  return meetsMinNotional(symbol, qty, price, isTestnet) ? qty : 0;
+}
+
+/** 30/30/40 (or any fractions) legs, or null if a leg would be below minQty. */
+export function splitScaleOutQty(
+  symbol: string,
+  qty: number,
+  fractions: readonly number[],
+  isTestnet = true
+): number[] | null {
+  if (qty <= 0 || fractions.length === 0) return null;
+  const parts: number[] = [];
+  let used = 0;
+  for (let i = 0; i < fractions.length; i++) {
+    const last = i === fractions.length - 1;
+    const raw = last ? qty - used : qty * fractions[i];
+    const q = roundQty(symbol, raw, isTestnet);
+    if (q <= 0) return null;
+    parts.push(q);
+    used += q;
+  }
+  if (used - qty > 1e-8) return null;
+  return parts;
+}
+
 export function precisionCacheAge(isTestnet: boolean): number {
   const row = cache.get(isTestnet ? "testnet" : "live");
   return row ? Date.now() - row.at : Number.POSITIVE_INFINITY;

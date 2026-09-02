@@ -1,9 +1,10 @@
 import { InlineKeyboard } from "grammy";
 import type { User, RiskSettings, ExchangeCredential, ActivePosition } from "@prisma/client";
 import { prisma } from "../db.js";
-import { tradingOrchestrator } from "../trading/orchestrator/TradingOrchestrator.js";
+import { tradingOrchestrator, parseIntelPlan } from "../trading/orchestrator/TradingOrchestrator.js";
 import { snapshotFor } from "../market/MarketScanner.js";
 import { binanceWsManager } from "../websocket.js";
+import { fetchLastPrice } from "../market/markPrice.js";
 import { livePositionStatus } from "../trading/positionState.js";
 import { SCAN_SYMBOLS } from "../trading/types.js";
 import { equityForUser } from "../trading/equity.js";
@@ -76,7 +77,9 @@ function sizeFields(r: RiskSettings | null) {
 function positionView(p: ActivePosition, mark: number) {
   const diff = p.side === "LONG" ? mark - p.entryPrice : p.entryPrice - mark;
   const pnl = p.entryPrice ? (diff / p.entryPrice) * p.sizeUsdt : 0;
+  const pnlPct = p.entryPrice ? (diff / p.entryPrice) * 100 : 0;
   const maxRiskUsdt = p.entryPrice ? (Math.abs(p.entryPrice - p.stopLossPrice) / p.entryPrice) * p.sizeUsdt : 0;
+  const plan = parseIntelPlan(p.aiRationale);
   return {
     id: p.id,
     symbol: p.symbol,
@@ -84,8 +87,12 @@ function positionView(p: ActivePosition, mark: number) {
     entry: p.entryPrice,
     mark,
     pnl,
+    pnlPct,
     sl: p.stopLossPrice,
     tp: p.takeProfitPrice,
+    tp1: plan?.tp1,
+    tp2: plan?.tp2,
+    tp3: plan?.tp3,
     sizeUsdt: p.sizeUsdt,
     marginUsdt: p.marginUsdt,
     leverage: p.leverage,
@@ -262,7 +269,7 @@ async function showPositions(reply: Reply, user: TgUser) {
     return;
   }
   for (const p of list) {
-    const mark = binanceWsManager.getPrice(p.symbol) || p.currentPrice;
+    const mark = (await fetchLastPrice(p.symbol)) || binanceWsManager.getPrice(p.symbol) || p.currentPrice;
     const screen = positionCard(langOf(user), positionView(p, mark));
     await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
   }
@@ -274,7 +281,7 @@ async function showOnePosition(reply: Reply, user: TgUser, id: string) {
     await showPositions(reply, user);
     return;
   }
-  const mark = binanceWsManager.getPrice(p.symbol) || p.currentPrice;
+  const mark = (await fetchLastPrice(p.symbol)) || binanceWsManager.getPrice(p.symbol) || p.currentPrice;
   const screen = positionCard(langOf(user), positionView(p, mark));
   await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
 }
@@ -674,6 +681,34 @@ export async function handleAction(
       await reply(panicDone(lang), { parse_mode: "HTML" });
       return;
     }
+    if (action === "testorder") {
+      await reply(
+        lang === "en"
+          ? "🧪 Sending a TESTNET-only min BTCUSDT order…"
+          : "🧪 Отправляю минимальный ордер BTCUSDT только на TESTNET…"
+      );
+      const pos = await tradingOrchestrator.placeCertifiedTestOrder(user.id, "BTCUSDT");
+      await reply(
+        lang === "en"
+          ? `🧪 <b>TEST ORDER</b>\n\n${pos.symbol} BUY\nOrder ID: <code>${pos.exchangeOrderId || pos.entryOrderId || "—"}</code>\nQty: ${pos.quantity}\nAvg: ${pos.entryPrice}\nSL: ${pos.stopLossPrice}\nStatus: OPEN`
+          : `🧪 <b>TEST ORDER</b>\n\n${pos.symbol} BUY\nOrder ID: <code>${pos.exchangeOrderId || pos.entryOrderId || "—"}</code>\nКоличество: ${pos.quantity}\nСредняя: ${pos.entryPrice}\nSL: ${pos.stopLossPrice}\nСтатус: OPEN`,
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+    if (action === "testclose") {
+      const open = await prisma.activePosition.findMany({
+        where: { userId: user.id, status: livePositionStatus, isPaperTrade: false },
+      });
+      if (!open.length) {
+        await reply(lang === "en" ? "No TESTNET position to close." : "Нет TESTNET позиции для закрытия.");
+        return;
+      }
+      for (const row of open) {
+        await tradingOrchestrator.closePosition(user.id, row.id, "MANUAL");
+      }
+      return;
+    }
     if (action === "open_paper") {
       const latest = await prisma.signal.findFirst({
         where: { userId: user.id, status: { in: ["NEW", "NOTIFIED", "VALIDATED"] } },
@@ -767,8 +802,8 @@ export async function handleAction(
       const open = await openCount(user.id);
       const text =
         lang === "en"
-          ? `🛠 <b>Advanced status</b>\n\nMode: ${user.tradingMode}\nAuto: ${user.autoTradeEnabled ? "ON" : "OFF"}\nOpen trades: ${open}\nBalance: $${equity.toFixed(2)}\nTelegram: ${telegramRuntime.polling ? "ON" : "OFF"}\nDatabase: ${snap?.postgres ? "OK" : "DOWN"}\nMarket data: ${snap?.marketDataHealthy ? "OK" : "WAIT"}`
-          : `🛠 <b>Технический статус</b>\n\nРежим: ${user.tradingMode}\nАвтоторговля: ${user.autoTradeEnabled ? "вкл" : "выкл"}\nОткрытых сделок: ${open}\nБаланс: $${equity.toFixed(2)}\nTelegram: ${telegramRuntime.polling ? "вкл" : "выкл"}\nБаза данных: ${snap?.postgres ? "ок" : "нет"}\nДанные рынка: ${snap?.marketDataHealthy ? "ок" : "ожидание"}`;
+          ? `🛠 <b>Advanced status</b>\n\nMode: ${user.tradingMode}\nAuto: ${user.autoTradeEnabled ? "ON" : "OFF"}\nOpen trades: ${open}\nBalance: $${equity.toFixed(2)}\nTelegram: ${telegramRuntime.polling ? "ON" : "OFF"}\nDatabase: ${snap?.postgres ? "OK" : "DOWN"}\nMarket data: ${snap?.marketDataHealthy ? "OK" : "WAIT"}\nBinance auth: ${snap?.binanceAuthenticated ? "authenticated = true" : "authenticated = false"}`
+          : `🛠 <b>Технический статус</b>\n\nРежим: ${user.tradingMode}\nАвтоторговля: ${user.autoTradeEnabled ? "вкл" : "выкл"}\nОткрытых сделок: ${open}\nБаланс: $${equity.toFixed(2)}\nTelegram: ${telegramRuntime.polling ? "вкл" : "выкл"}\nБаза данных: ${snap?.postgres ? "ок" : "нет"}\nДанные рынка: ${snap?.marketDataHealthy ? "ок" : "ожидание"}\nBinance: ${snap?.binanceAuthenticated ? "authenticated = true" : "authenticated = false"}`;
       await reply(text, { parse_mode: "HTML" });
       return;
     }

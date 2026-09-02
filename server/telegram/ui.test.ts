@@ -28,7 +28,7 @@ assert.match(
   }),
   /Размер сделки: \$100\.00[\s\S]*Использовано средств: \$50\.00[\s\S]*Плечо: x2[\s\S]*Максимальный риск по сделке: \$5\.00/
 );
-assert.match(tradeClosedMessage("ru", { symbol: "BTCUSDT", pnl: 18, fees: 2, reason: "TAKE_PROFIT", grossPnl: 20, entryFee: 1, exitFee: 1 }), /Чистая прибыль[\s\S]*Комиссия входа[\s\S]*Комиссия выхода/);
+assert.match(tradeClosedMessage("ru", { symbol: "BTCUSDT", pnl: 18, fees: 2, reason: "TAKE_PROFIT", grossPnl: 20, entryFee: 1, exitFee: 1 }), /СДЕЛКА ЗАКРЫТА[\s\S]*Комиссия входа[\s\S]*Комиссия выхода/);
 assert.equal(matchReply("▶️ Старт", "ru"), "start_bot");
 assert.equal(matchReply("❓ Помощь", "ru"), "help");
 assert.match(sizeSettingsScreen("ru", {

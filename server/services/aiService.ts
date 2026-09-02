@@ -101,13 +101,14 @@ EMA20/50: ${indicators?.ema20 ?? "n/a"} / ${indicators?.ema50 ?? "n/a"}
       const text = response.text?.trim() || "";
       const json = JSON.parse(text.replace(/```json|```/g, "").trim());
       const checked = parseAiSignal(json);
-      if (checked.ok) {
+      if (checked.ok === false) {
+        logger.warn({ error: checked.error }, "AI JSON не прошёл валидацию, сигнал сброшен");
+      } else {
         if (checked.signal.confidence < params.user.aiConfidenceThreshold) {
           return { ...checked.signal, signal: "HOLD" };
         }
         return checked.signal;
       }
-      logger.warn({ error: checked.error }, "AI JSON не прошёл валидацию, сигнал сброшен");
     } catch (err) {
       logger.warn({ err }, "Gemini недоступен, fallback quant");
     }

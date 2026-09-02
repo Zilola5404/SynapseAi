@@ -35,7 +35,8 @@ export interface ExecutionProvider {
     slClientId: string;
     tpClientId: string;
     quantity: number;
-  }): Promise<{ slOrderId?: string; tpOrderId?: string }>;
+    takeProfits?: { price: number; quantity: number; clientOrderId: string }[];
+  }): Promise<{ slOrderId?: string; tpOrderId?: string; tpOrderIds?: string[] }>;
   replaceStop?(params: {
     symbol: string;
     entrySide: "BUY" | "SELL";
@@ -48,7 +49,13 @@ export interface ExecutionProvider {
   cancelProtective?(params: { symbol: string; slOrderId?: string | null; tpOrderId?: string | null }): Promise<void>;
   cancelAllOrders?(symbol?: string): Promise<void>;
   getBalance?(): Promise<{ equity: number; available: number }>;
-  getExchangePositions?(symbol?: string): Promise<{ symbol: string; positionAmt: number; entryPrice: number; unRealizedProfit: number }[]>;
+  getExchangePositions?(symbol?: string): Promise<{
+    symbol: string;
+    positionAmt: number;
+    entryPrice: number;
+    markPrice?: number;
+    unRealizedProfit: number;
+  }[]>;
   queryOrder?(clientOrderId: string, symbol: string): Promise<ExecutionFill | null>;
 }
 

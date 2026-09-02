@@ -5,7 +5,7 @@ import { binanceWsManager } from "../websocket.js";
 import { config } from "../config.js";
 import { workerSnapshot, isEngineReady } from "../services/tradingEngine.js";
 import { userStreamCount } from "../market/userDataStream.js";
-import { pingFuturesRest } from "../exchanges/binance/futuresClient.js";
+import { getFuturesAccount, pingFuturesRest } from "../exchanges/binance/futuresClient.js";
 import { telegramRuntime } from "../telegram/runtime.js";
 import { marketDataProvider, futuresMarketDataUrl } from "../market/MarketDataProvider.js";
 import { livePositionStatus } from "../trading/positionState.js";
@@ -39,11 +39,21 @@ export async function systemSnapshot() {
   const workers = workerSnapshot();
   const telegram = Boolean(config.telegramBotToken);
   const ai = Boolean(config.geminiApiKey);
-  const binanceRest = await pingFuturesRest(false);
+  const binanceRest = await pingFuturesRest(config.binanceUseTestnet);
+  let binanceAuthenticated = false;
+  if (config.binanceApiKey && config.binanceApiSecret) {
+    try {
+      await getFuturesAccount(config.binanceApiKey, config.binanceApiSecret, config.binanceUseTestnet);
+      binanceAuthenticated = true;
+    } catch {
+      binanceAuthenticated = false;
+    }
+  }
   return {
     postgres,
     redis,
     binanceRest,
+    binanceAuthenticated,
     binanceWs: ws.connected,
     marketDataHealthy: marketDataProvider.isHealthy(),
     marketDataUrl: futuresMarketDataUrl(),
@@ -83,6 +93,7 @@ healthRouter.get("/metrics", async (_req, res) => {
     `synapse_postgres_up ${s.postgres ? 1 : 0}`,
     `synapse_redis_up ${s.redis ? 1 : 0}`,
     `synapse_binance_rest_up ${s.binanceRest ? 1 : 0}`,
+    `synapse_binance_authenticated ${s.binanceAuthenticated ? 1 : 0}`,
     `synapse_binance_ws_up ${s.binanceWs ? 1 : 0}`,
     `synapse_market_data_up ${s.marketDataHealthy ? 1 : 0}`,
     `synapse_telegram_configured ${s.telegram ? 1 : 0}`,

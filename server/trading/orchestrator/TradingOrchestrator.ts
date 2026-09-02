@@ -29,6 +29,10 @@ import { computeTradePnl, canRunFinalize } from "../pnl.js";
 import { SIGNAL_TTL_MS, buildSignalFactors, potentialMoveUsdt, isSignalExpired, priceMovedTooFar, encodeConfluencePayload, parseSignalFactors } from "../signalExplain.js";
 import { autoAllowed } from "../intelligence/NoTradeEngine.js";
 import { INTEL } from "../intelligence/config.js";
+import { TP_SCALE_OUT } from "../tpPolicy.js";
+import { KILL_SWITCH_POLICY } from "../killSwitchPolicy.js";
+import { fetchLastPrice } from "../../market/markPrice.js";
+import { minTradeQty, splitScaleOutQty } from "../../exchanges/binance/precision.js";
 import type { StrategySignal, TradingMode } from "../types.js";
 import type { ActivePosition, User } from "@prisma/client";
 
@@ -40,7 +44,7 @@ const LIVE_RISK = {
   maxOpenPositions: 2,
 };
 
-function parseIntelPlan(raw: string | null | undefined) {
+export function parseIntelPlan(raw: string | null | undefined) {
   if (!raw) return null;
   const i = raw.indexOf("__PLAN__");
   if (i < 0) return null;
@@ -121,6 +125,7 @@ export class TradingOrchestrator {
     }
 
     await this.reconcileUser(userId).catch((err) => logger.warn({ err }, "panic reconcile"));
+    logger.info({ policy: KILL_SWITCH_POLICY, steps }, "[KILL_SWITCH]");
     await writeSystemLog({
       userId,
       level: "RISK_WARN",
@@ -142,14 +147,50 @@ export class TradingOrchestrator {
 
   async setMode(userId: string, mode: TradingMode) {
     if (mode === "LIVE") throw new Error("LIVE только через двойное подтверждение");
-    const data: { tradingMode: string; liveConfirmedAt?: null } = { tradingMode: mode };
-    if (mode !== "LIVE") data.liveConfirmedAt = null;
+    const data: { tradingMode: string; liveConfirmedAt: null } = { tradingMode: mode, liveConfirmedAt: null };
     if (mode === "TESTNET") {
       const creds = await getDecryptedCredentials(userId).catch(() => null);
       if (!creds) throw new Error("Сначала /keys — нужны Binance Testnet ключи");
     }
     await prisma.user.update({ where: { id: userId }, data });
     await writeSystemLog({ userId, level: "INFO", action: "MODE", details: mode });
+  }
+
+  /** Manual TESTNET-only min order. Telegram `/testorder`. */
+  async placeCertifiedTestOrder(userId: string, symbol = "BTCUSDT") {
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: { riskSettings: true } });
+    if (!user?.riskSettings) throw new Error("Нет профиля риска");
+    if (user.tradingMode !== "TESTNET") {
+      throw new Error("TEST ORDER только в режиме TESTNET. Сначала /keys и режим TESTNET.");
+    }
+    const mark = await fetchLastPrice(symbol);
+    if (!mark) throw new Error("Нет цены BTCUSDT — нет ордера");
+    const qty = minTradeQty(symbol, mark, true);
+    if (qty <= 0) throw new Error("Не удалось подобрать минимальный лот BTCUSDT");
+    const sl = Number((mark * 0.985).toFixed(2));
+    const tp1 = Number((mark * 1.004).toFixed(2));
+    const tp2 = Number((mark * 1.008).toFixed(2));
+    const tp3 = Number((mark * 1.012).toFixed(2));
+    const signal: StrategySignal = {
+      symbol,
+      direction: "LONG",
+      confidence: 13,
+      qualityScore: 13,
+      confluenceScore: 13,
+      setupGrade: "A+",
+      setupType: "TEST_ORDER",
+      entryPrice: mark,
+      stopLoss: sl,
+      takeProfit: tp2,
+      takeProfit1: tp1,
+      takeProfit2: tp2,
+      takeProfit3: tp3,
+      riskReward: 2,
+      reasoning: "Certified TESTNET min order",
+      strategy: "TEST_ORDER",
+    };
+    const pos = await this.openFromSignal(userId, signal, "manual", undefined, { quantity: qty, skipAi: true });
+    return pos;
   }
 
   async enableLive(userId: string) {
@@ -228,12 +269,18 @@ export class TradingOrchestrator {
     return results;
   }
 
-  async openFromSignal(userId: string, signal: StrategySignal, source: "auto" | "manual" = "manual", storedSignalId?: string) {
+  async openFromSignal(
+    userId: string,
+    signal: StrategySignal,
+    source: "auto" | "manual" = "manual",
+    storedSignalId?: string,
+    opts?: { quantity?: number; skipAi?: boolean }
+  ) {
     return withSymbolLock(userId, signal.symbol, async () => {
       const user = await prisma.user.findUnique({ where: { id: userId }, include: { riskSettings: true } });
       if (!user?.riskSettings) throw new Error("Нет профиля риска");
 
-      if (!marketDataProvider.isHealthy()) {
+      if (!marketDataProvider.isHealthy() && source === "auto") {
         logger.warn({ symbol: signal.symbol }, "[AUTO] Market data DEGRADED — no trade");
         throw new Error("MARKET DATA DEGRADED — no new trades");
       }
@@ -243,7 +290,7 @@ export class TradingOrchestrator {
       }
 
       const live = binanceWsManager.getPrice(signal.symbol);
-      if (live && priceMovedTooFar(signal.entryPrice, live)) {
+      if (live && !opts?.skipAi && priceMovedTooFar(signal.entryPrice, live)) {
         if (storedSignalId) await prisma.signal.update({ where: { id: storedSignalId }, data: { status: "EXPIRED" } }).catch(() => undefined);
         throw new Error("SIGNAL_STALE");
       }
@@ -268,11 +315,14 @@ export class TradingOrchestrator {
       });
       await transitionOrder(tracked.id, "VALIDATED");
 
-      const ai = await filterSignal(signal);
-      logger.info({ symbol: signal.symbol, pass: ai.pass, note: ai.note }, `[AI] ${ai.pass ? "APPROVED" : "REJECTED"}`);
-      if (!ai.pass) {
-        await transitionOrder(tracked.id, "REJECTED", { lastError: ai.note });
-        throw new Error(`AI filter: ${ai.note}`);
+      let ai = { pass: true, note: opts?.skipAi ? "TEST_ORDER" : "" };
+      if (!opts?.skipAi) {
+        ai = await filterSignal(signal);
+        logger.info({ symbol: signal.symbol, pass: ai.pass, note: ai.note }, `[AI] ${ai.pass ? "APPROVED" : "REJECTED"}`);
+        if (!ai.pass) {
+          await transitionOrder(tracked.id, "REJECTED", { lastError: ai.note });
+          throw new Error(`AI filter: ${ai.note}`);
+        }
       }
 
       const circuit = await circuitStatus(userId);
@@ -309,8 +359,10 @@ export class TradingOrchestrator {
         throw new Error(risk.reason);
       }
       await transitionOrder(tracked.id, "RISK_APPROVED");
-      logger.info({ symbol: signal.symbol, sizeUsdt: risk.sizeUsdt, qty: risk.quantity, leverage: risk.leverage }, "[RISK] APPROVED");
-      logger.info({ symbol: signal.symbol, mode: user.tradingMode }, `[EXECUTION] ${user.tradingMode}`);
+      const execQty = opts?.quantity && opts.quantity > 0 ? opts.quantity : risk.quantity;
+      const execSize = execQty * signal.entryPrice;
+      const execMargin = execSize / Math.max(1, risk.leverage);
+      logger.info({ symbol: signal.symbol, sizeUsdt: execSize, qty: execQty, leverage: risk.leverage }, "[RISK] APPROVED");
 
       const exec = await providerFor(user);
       if (exec instanceof BinanceExecution) {
@@ -322,7 +374,7 @@ export class TradingOrchestrator {
         fill = await exec.openMarket({
           symbol: signal.symbol,
           side: signal.direction === "LONG" ? "BUY" : "SELL",
-          quantity: risk.quantity,
+          quantity: execQty,
           markPrice: signal.entryPrice,
           clientOrderId: tracked.clientOrderId,
         });
@@ -353,6 +405,18 @@ export class TradingOrchestrator {
         reason: "fill confirmed",
         exchangeResponse: fill,
       });
+      logger.info(
+        {
+          symbol: signal.symbol,
+          side: signal.direction === "LONG" ? "BUY" : "SELL",
+          orderId: fill.orderId,
+          clientOrderId: fill.clientOrderId || tracked.clientOrderId,
+          status: fill.status,
+          quantity: fill.quantity,
+          avgPrice: fill.fillPrice,
+        },
+        "[EXECUTION]"
+      );
 
       const pos = await prisma.activePosition.create({
         data: {
@@ -362,7 +426,7 @@ export class TradingOrchestrator {
           entryPrice: fill.fillPrice,
           currentPrice: fill.fillPrice,
           sizeUsdt: fill.fillPrice * fill.quantity,
-          marginUsdt: risk.marginUsdt,
+          marginUsdt: execMargin,
           quantity: fill.quantity,
           leverage: risk.leverage,
           liquidationPrice:
@@ -403,43 +467,88 @@ export class TradingOrchestrator {
             price: signal.stopLoss,
             status: "SUBMITTED",
           });
-          const tpOrder = await createTrackedOrder({
-            userId,
-            positionId: pos.id,
-            symbol: signal.symbol,
-            side: signal.direction === "LONG" ? "SELL" : "BUY",
-            type: "TAKE_PROFIT_MARKET",
-            purpose: "TP",
-            quantity: fill.quantity,
-            price: signal.takeProfit,
-            status: "SUBMITTED",
-          });
+          const tpPrices = [
+            signal.takeProfit1 || signal.takeProfit,
+            signal.takeProfit2 || signal.takeProfit,
+            signal.takeProfit3 || null,
+          ].filter((p): p is number => typeof p === "number" && p > 0);
+          const isTestnet = exec.mode !== "LIVE";
+          const split = splitScaleOutQty(signal.symbol, fill.quantity, TP_SCALE_OUT, isTestnet);
+          const tpOrders = [];
+          if (split && tpPrices.length >= 2) {
+            for (let i = 0; i < split.length; i++) {
+              tpOrders.push(
+                await createTrackedOrder({
+                  userId,
+                  positionId: pos.id,
+                  symbol: signal.symbol,
+                  side: signal.direction === "LONG" ? "SELL" : "BUY",
+                  type: "TAKE_PROFIT_MARKET",
+                  purpose: "TP",
+                  quantity: split[i],
+                  price: tpPrices[i] || signal.takeProfit,
+                  status: "SUBMITTED",
+                })
+              );
+            }
+          } else {
+            tpOrders.push(
+              await createTrackedOrder({
+                userId,
+                positionId: pos.id,
+                symbol: signal.symbol,
+                side: signal.direction === "LONG" ? "SELL" : "BUY",
+                type: "TAKE_PROFIT_MARKET",
+                purpose: "TP",
+                quantity: fill.quantity,
+                price: signal.takeProfit,
+                status: "SUBMITTED",
+              })
+            );
+          }
           const prot = await exec.placeProtection({
             symbol: signal.symbol,
             entrySide: signal.direction === "LONG" ? "BUY" : "SELL",
             stopLoss: signal.stopLoss,
             takeProfit: signal.takeProfit,
             slClientId: slOrder.clientOrderId,
-            tpClientId: tpOrder.clientOrderId,
+            tpClientId: tpOrders[0].clientOrderId,
             quantity: fill.quantity,
+            takeProfits:
+              tpOrders.length > 1
+                ? tpOrders.map((o, i) => ({
+                    price: o.price || tpPrices[i] || signal.takeProfit,
+                    quantity: o.quantity,
+                    clientOrderId: o.clientOrderId,
+                  }))
+                : undefined,
           });
-          if (!prot.slOrderId || !prot.tpOrderId) {
+          if (!prot.slOrderId) {
             throw new Error(`protection incomplete sl=${prot.slOrderId || "-"} tp=${prot.tpOrderId || "-"}`);
+          }
+          if (!prot.tpOrderId && !(prot.tpOrderIds && prot.tpOrderIds.length)) {
+            throw new Error(`protection incomplete sl=${prot.slOrderId} tp=-`);
           }
           await prisma.activePosition.update({
             where: { id: pos.id },
-            data: { slOrderId: prot.slOrderId, tpOrderId: prot.tpOrderId },
+            data: { slOrderId: prot.slOrderId, tpOrderId: prot.tpOrderId || prot.tpOrderIds?.[0] || null },
           });
           await transitionOrder(slOrder.id, "ACKNOWLEDGED", {
             exchangeOrderId: prot.slOrderId,
-            reason: "SL confirmed on exchange",
+            reason: "SL confirmed on exchange (closePosition)",
           });
-          await transitionOrder(tpOrder.id, "ACKNOWLEDGED", {
-            exchangeOrderId: prot.tpOrderId,
-            reason: "TP confirmed on exchange",
-          });
+          const tpIds = prot.tpOrderIds?.length ? prot.tpOrderIds : prot.tpOrderId ? [prot.tpOrderId] : [];
+          for (let i = 0; i < tpOrders.length; i++) {
+            await transitionOrder(tpOrders[i].id, "ACKNOWLEDGED", {
+              exchangeOrderId: tpIds[i] || prot.tpOrderId,
+              reason: tpOrders.length > 1 ? `TP${i + 1} confirmed on exchange` : "TP confirmed on exchange",
+            });
+          }
           await transitionOrder(tracked.id, "PROTECTED");
-          logger.info({ symbol: signal.symbol, sl: prot.slOrderId, tp: prot.tpOrderId }, "[PROTECTION] SL/TP verified");
+          logger.info(
+            { symbol: signal.symbol, sl: prot.slOrderId, tp: tpIds, ladder: tpOrders.length > 1 },
+            "[PROTECTION] SL/TP verified"
+          );
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logger.error({ err: message, pos: pos.id }, "PROTECTION FAILURE");
@@ -527,7 +636,7 @@ export class TradingOrchestrator {
         logger.info({ symbol: signal.symbol, sl: signal.stopLoss, tp: signal.takeProfit }, "[PROTECTION] SL/TP verified");
         await prisma.user.update({
           where: { id: userId },
-          data: { paperBalanceUsdt: { decrement: risk.marginUsdt } },
+          data: { paperBalanceUsdt: { decrement: execMargin } },
         });
       }
 
@@ -1064,9 +1173,49 @@ export class TradingOrchestrator {
       where: { status: livePositionStatus },
       include: { user: { include: { riskSettings: true } } },
     });
+    const execByUser = new Map<string, ExecutionProvider>();
     for (const pos of positions) {
-      const price = binanceWsManager.getPrice(pos.symbol);
-      if (!price) continue;
+      let mark = binanceWsManager.getPrice(pos.symbol);
+      let qty = pos.quantity;
+      let entry = pos.entryPrice;
+
+      if (!pos.isPaperTrade) {
+        try {
+          let exec = execByUser.get(pos.userId);
+          if (!exec) {
+            exec = await providerFor(pos.user);
+            execByUser.set(pos.userId, exec);
+          }
+          const rows = await exec.getExchangePositions?.(pos.symbol);
+          const row = rows?.find((p) => p.symbol === pos.symbol.replace("/", "").toUpperCase());
+          if (!row || Math.abs(row.positionAmt) < 1e-8) {
+            await this.finalizeClose(pos, mark || pos.currentPrice, 0, "RECONCILE_EXCHANGE_FLAT");
+            continue;
+          }
+          qty = Math.abs(row.positionAmt);
+          if (row.entryPrice > 0) entry = row.entryPrice;
+          if (row.markPrice && row.markPrice > 0) mark = row.markPrice;
+        } catch (err) {
+          logger.warn({ err, id: pos.id, symbol: pos.symbol }, "positionRisk poll failed");
+        }
+      }
+
+      if (!mark || mark <= 0) {
+        mark = await fetchLastPrice(pos.symbol);
+      }
+      if (!mark || mark <= 0) continue;
+
+      const price = mark;
+      await prisma.activePosition.update({
+        where: { id: pos.id },
+        data: {
+          currentPrice: price,
+          quantity: qty,
+          entryPrice: entry,
+          sizeUsdt: entry * qty,
+        },
+      });
+
       if (pos.status === "CLOSING") {
         if (pos.closeRequestedAt && Date.now() - pos.closeRequestedAt.getTime() > 20_000) {
           await this.retryClose(pos).catch((err) => logger.warn({ err }, "retry close"));
@@ -1074,10 +1223,11 @@ export class TradingOrchestrator {
         continue;
       }
       if (!pos.isPaperTrade) {
-        await prisma.activePosition.update({ where: { id: pos.id }, data: { currentPrice: price } });
         const risk = pos.user.riskSettings;
         if (risk?.enableTrailingStop && pos.status === "OPEN") {
-          await this.trailExchangeStop(pos, price).catch((err) => logger.warn({ err }, "trail stop"));
+          await this.trailExchangeStop({ ...pos, quantity: qty, stopLossPrice: pos.stopLossPrice }, price).catch((err) =>
+            logger.warn({ err }, "trail stop")
+          );
         }
         continue;
       }
@@ -1111,7 +1261,7 @@ export class TradingOrchestrator {
           const last = hits >= targets.length - 1;
           if (last) reason = "TAKE_PROFIT";
           else {
-            await this.scaleOutPaper(pos, INTEL.scaleOut[hits] || 0.33, `TP${hits + 1}`, price).catch((err) =>
+            await this.scaleOutPaper(pos, INTEL.scaleOut[hits] || TP_SCALE_OUT[hits] || 0.3, `TP${hits + 1}`, price).catch((err) =>
               logger.warn({ err }, "paper scale-out")
             );
             continue;
@@ -1125,8 +1275,6 @@ export class TradingOrchestrator {
         await this.closePosition(pos.userId, pos.id, reason).catch((err) => logger.warn({ err }, "paper sl/tp"));
       } else if (sl !== pos.stopLossPrice) {
         await prisma.activePosition.update({ where: { id: pos.id }, data: { stopLossPrice: sl, currentPrice: price } });
-      } else {
-        await prisma.activePosition.update({ where: { id: pos.id }, data: { currentPrice: price } });
       }
     }
   }
@@ -1356,8 +1504,19 @@ export class TradingOrchestrator {
     for (const pos of db) {
       const row = exchange.find((p) => p.symbol === pos.symbol);
       if (!row || Math.abs(row.positionAmt) < 1e-8) {
-        diffs.push(`DB open ${pos.symbol}, exchange FLAT → close DB`);
+        diffs.push(`DB open ${pos.symbol}, exchange FLAT → RECONCILE close DB`);
         await this.finalizeClose(pos, pos.currentPrice, 0, "RECONCILE_EXCHANGE_FLAT");
+        continue;
+      }
+      const qty = Math.abs(row.positionAmt);
+      const entry = row.entryPrice || pos.entryPrice;
+      const mark = row.markPrice || pos.currentPrice;
+      if (Math.abs(qty - pos.quantity) > 1e-8 || (row.entryPrice && Math.abs(entry - pos.entryPrice) > 1e-4)) {
+        diffs.push(`SYNC ${pos.symbol} qty ${pos.quantity}->${qty} entry ${pos.entryPrice}->${entry}`);
+        await prisma.activePosition.update({
+          where: { id: pos.id },
+          data: { quantity: qty, entryPrice: entry, currentPrice: mark, sizeUsdt: qty * entry, status: "OPEN" },
+        });
       }
     }
     for (const row of exchange) {

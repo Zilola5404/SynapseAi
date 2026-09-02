@@ -6,10 +6,10 @@ import dotenv from "dotenv";
 import {
   fetchBinanceKlines,
   fetchBinanceOrderBook,
-  fetchBinanceAccountBalance,
   testBinanceApiConnection,
-  fetchBinanceOpenOrders,
 } from "./server/binance.js";
+import { getFuturesAccount, pingFuturesRest, listOpenFuturesOrders } from "./server/exchanges/binance/futuresClient.js";
+import { config } from "./server/config.js";
 import { binanceWsManager } from "./server/websocket.js";
 import { validateOrderRisk, ServerRiskSettings } from "./server/risk.js";
 import { testTelegramBotConnection, sendTelegramMessage } from "./server/telegram.js";
@@ -74,11 +74,38 @@ app.get("/api/health", (req, res) => {
 // 1. Ping & Test Binance Connection
 app.get("/api/binance/ping", async (req, res) => {
   const isTestnet = req.query.testnet !== "false";
-  const apiKey = (req.query.apiKey as string) || process.env.BINANCE_API_KEY || "";
-  const apiSecret = (req.query.apiSecret as string) || process.env.BINANCE_API_SECRET || "";
-
-  const result = await testBinanceApiConnection(apiKey, apiSecret, isTestnet);
-  res.json(result);
+  const start = Date.now();
+  const publicOk = await pingFuturesRest(isTestnet);
+  const pingMs = Date.now() - start;
+  const apiKey = config.binanceApiKey;
+  const apiSecret = config.binanceApiSecret;
+  if (!apiKey || !apiSecret) {
+    return res.json({
+      success: publicOk,
+      pingMs,
+      authenticated: false,
+      message: publicOk
+        ? `Публичный Futures API доступен (${pingMs}мс). Ключи только на сервере (env / encrypted DB).`
+        : "Не удалось связаться с Binance Futures",
+    });
+  }
+  try {
+    const acc = await getFuturesAccount(apiKey, apiSecret, isTestnet);
+    return res.json({
+      success: true,
+      pingMs,
+      authenticated: true,
+      message: `authenticated = true. Equity $${acc.totalEquityUsdt} USDT (${isTestnet ? "Testnet" : "Mainnet"})`,
+      balance: acc,
+    });
+  } catch (err: any) {
+    return res.json({
+      success: false,
+      pingMs,
+      authenticated: false,
+      message: err?.message || "Futures auth failed",
+    });
+  }
 });
 
 // 2. Fetch Real Klines (Candles) from Binance
@@ -167,20 +194,19 @@ app.post("/api/binance/cancel-order", (_req, res) => {
 // 8. Fetch Active Open Orders
 app.get("/api/binance/open-orders", async (req, res) => {
   try {
-    const symbol = req.query.symbol as string;
+    const symbol = req.query.symbol as string | undefined;
     const isTestnet = req.query.testnet !== "false";
-    const isFutures = req.query.futures === "true";
-    const apiKey = (req.query.apiKey as string) || process.env.BINANCE_API_KEY || "";
-    const apiSecret = (req.query.apiSecret as string) || process.env.BINANCE_API_SECRET || "";
-
-    const openOrders = await fetchBinanceOpenOrders(
-      symbol,
-      apiKey.trim(),
-      apiSecret.trim(),
+    const apiKey = config.binanceApiKey;
+    const apiSecret = config.binanceApiSecret;
+    if (!apiKey || !apiSecret) {
+      return res.status(401).json({ success: false, message: "Binance keys are server-side only" });
+    }
+    const openOrders = await listOpenFuturesOrders({
+      apiKey,
+      apiSecret,
       isTestnet,
-      isFutures
-    );
-
+      symbol,
+    });
     res.json({ success: true, openOrders });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || "Failed to fetch open orders" });

@@ -40,8 +40,22 @@ export const config = {
       : process.env.HTTPS_PROXY || process.env.https_proxy || ""
   ).trim(),
   telegramApiRoot: (process.env.TELEGRAM_API_ROOT || "https://api.telegram.org").trim().replace(/\/$/, ""),
-  binanceUseTestnet: process.env.BINANCE_USE_TESTNET !== "false",
+  binanceUseTestnet: readBinanceTestnetFlag(),
+  binanceApiKey: (process.env.BINANCE_API_KEY || "").trim(),
+  binanceApiSecret: (process.env.BINANCE_API_SECRET || "").trim(),
 };
+
+function envFlag(name: string): string | undefined {
+  const raw = process.env[name];
+  return raw == null ? undefined : raw.trim().toLowerCase();
+}
+
+function readBinanceTestnetFlag() {
+  const alias = envFlag("BINANCE_TESTNET");
+  if (alias === "true" || alias === "1" || alias === "yes") return true;
+  if (alias === "false" || alias === "0" || alias === "no") return false;
+  return process.env.BINANCE_USE_TESTNET !== "false";
+}
 
 function isProduction() {
   return (process.env.NODE_ENV || "").toLowerCase() === "production";

@@ -78,28 +78,40 @@ export default function App() {
 
   // Binance API Config state (loaded from localStorage)
   const [binanceConfig, setBinanceConfig] = useState<{
-    apiKey: string;
-    apiSecret: string;
     isTestnet: boolean;
     tradingType: 'SPOT' | 'FUTURES';
+    hasKeys: boolean;
+    apiKeyMask: string;
   }>(() => {
     try {
-      const saved = localStorage.getItem('synapse_binance_config');
-      if (saved) return JSON.parse(saved);
+      localStorage.removeItem('synapse_binance_config');
     } catch {}
     return {
-      apiKey: '',
-      apiSecret: '',
       isTestnet: true,
-      tradingType: 'SPOT',
+      tradingType: 'FUTURES',
+      hasKeys: false,
+      apiKeyMask: '',
     };
   });
 
   // Telegram Bot Config state (loaded from localStorage)
   const [telegramSettings, setTelegramSettings] = useState<TelegramSettings>(() => {
     try {
-      const saved = localStorage.getItem('synapse_telegram_config');
-      if (saved) return JSON.parse(saved);
+      localStorage.removeItem('synapse_telegram_config');
+      const saved = localStorage.getItem('synapse_telegram_prefs');
+      if (saved) {
+        const prefs = JSON.parse(saved);
+        return {
+          botToken: '',
+          chatId: '',
+          enabled: Boolean(prefs.enabled),
+          notifyOnSignals: prefs.notifyOnSignals !== false,
+          notifyOnOrders: prefs.notifyOnOrders !== false,
+          notifyOnStopLoss: prefs.notifyOnStopLoss !== false,
+          notifyOnEmergency: prefs.notifyOnEmergency !== false,
+          notifyDailyReport: prefs.notifyDailyReport !== false,
+        };
+      }
     } catch {}
     return {
       botToken: '',
@@ -175,16 +187,28 @@ export default function App() {
   );
 
   const handleSaveTelegramSettings = (newSettings: TelegramSettings) => {
-    setTelegramSettings(newSettings);
+    const sanitized: TelegramSettings = { ...newSettings, botToken: '', chatId: newSettings.chatId ? '***' : '' };
+    setTelegramSettings({ ...newSettings, botToken: '', chatId: '' });
     try {
-      localStorage.setItem('synapse_telegram_config', JSON.stringify(newSettings));
+      localStorage.removeItem('synapse_telegram_config');
+      localStorage.setItem(
+        'synapse_telegram_prefs',
+        JSON.stringify({
+          enabled: sanitized.enabled,
+          notifyOnSignals: sanitized.notifyOnSignals,
+          notifyOnOrders: sanitized.notifyOnOrders,
+          notifyOnStopLoss: sanitized.notifyOnStopLoss,
+          notifyOnEmergency: sanitized.notifyOnEmergency,
+          notifyDailyReport: sanitized.notifyDailyReport,
+        })
+      );
     } catch {}
     addLog({
       level: 'INFO',
       pair: 'SYSTEM',
       action: 'НАСТРОЙКИ TELEGRAM ОБНОВЛЕНЫ 🤖',
-      details: `Telegram бот ${newSettings.enabled ? 'АКТИВИРОВАН' : 'ОТКЛЮЧЕН'} (Chat ID: ${newSettings.chatId || 'не указан'})`,
-      reasoning: 'Настройки оповещений сохранены в локальное хранилище.',
+      details: `Telegram бот ${newSettings.enabled ? 'АКТИВИРОВАН' : 'ОТКЛЮЧЕН'}. Токен не сохраняется в браузере.`,
+      reasoning: 'Секреты только на сервере (TELEGRAM_BOT_TOKEN).',
     });
   };
 
@@ -199,17 +223,21 @@ export default function App() {
   }, []);
 
   // Save Binance Config to localStorage
-  const handleSaveBinanceConfig = (config: typeof binanceConfig) => {
-    setBinanceConfig(config);
+  const handleSaveBinanceConfig = (config: { isTestnet: boolean; tradingType: 'SPOT' | 'FUTURES' }) => {
+    setBinanceConfig((prev) => ({
+      ...prev,
+      isTestnet: config.isTestnet,
+      tradingType: config.tradingType,
+    }));
     try {
-      localStorage.setItem('synapse_binance_config', JSON.stringify(config));
+      localStorage.removeItem('synapse_binance_config');
     } catch {}
     addLog({
       level: 'INFO',
       pair: selectedSymbol,
       action: 'НАСТРОЙКИ BINANCE API ОБНОВЛЕНЫ 🔑',
-      details: `Подключение: ${config.isTestnet ? 'Binance Testnet' : 'Binance Mainnet'} (${config.tradingType})`,
-      reasoning: 'Параметры подключения к бирже обновлены.',
+      details: `Подключение: ${config.isTestnet ? 'Binance Testnet' : 'Binance Mainnet'} (${config.tradingType}). Ключи не сохраняются в браузере.`,
+      reasoning: 'API Secret только на сервере (encrypted DB / env).',
     });
   };
 
@@ -417,13 +445,7 @@ export default function App() {
       await fetch('/api/binance/kill-switch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          symbol: selectedSymbol.replace('/', ''),
-          apiKey: binanceConfig.apiKey,
-          apiSecret: binanceConfig.apiSecret,
-          isTestnet: binanceConfig.isTestnet,
-          isFutures: binanceConfig.tradingType === 'FUTURES',
-        }),
+        body: JSON.stringify({}),
       });
     } catch (e) {
       console.warn('Kill switch API notification warning:', e);
@@ -675,7 +697,7 @@ export default function App() {
         onOpenAuth={handleOpenAuth}
         onLogout={handleLogout}
         isScanning={isScanning}
-        isPaperTrading={!binanceConfig.apiKey || binanceConfig.isTestnet}
+        isPaperTrading={!binanceConfig.hasKeys || binanceConfig.isTestnet}
       />
 
       {/* Main Container */}

@@ -112,7 +112,7 @@ export function startTradingEngine() {
     } catch (err) {
       logger.error({ err }, "ReconcileWorker");
     }
-  }, 120_000);
+  }, 30_000);
 
   scanTimer = setInterval(() => {
     if (!engineReady) return;

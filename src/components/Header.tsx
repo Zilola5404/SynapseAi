@@ -27,7 +27,8 @@ interface HeaderProps {
   risk: RiskSettings;
   telegramSettings?: TelegramSettings;
   binanceConfig?: {
-    apiKey: string;
+    apiKeyMask?: string;
+    hasKeys?: boolean;
     isTestnet: boolean;
     tradingType: 'SPOT' | 'FUTURES';
   };
@@ -71,8 +72,8 @@ export const Header: React.FC<HeaderProps> = ({
   isScanning,
   isPaperTrading = true,
 }) => {
-  const isBinanceConnected = binanceConfig?.apiKey && binanceConfig.apiKey.length > 5;
-  const isTelegramConnected = telegramSettings?.enabled && telegramSettings?.botToken;
+  const isBinanceConnected = Boolean(binanceConfig?.hasKeys || (binanceConfig?.apiKeyMask && binanceConfig.apiKeyMask.length > 3));
+  const isTelegramConnected = Boolean(telegramSettings?.enabled);
 
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);

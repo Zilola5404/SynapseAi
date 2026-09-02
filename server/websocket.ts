@@ -48,6 +48,18 @@ class BinanceStreamManager {
         try {
           const candles = await marketDataProvider.fetchKlines({ symbol: sym.toUpperCase(), interval: "1m", limit: 120 });
           candleCache.replace(sym, candles);
+          const last = candles[candles.length - 1];
+          if (last?.close > 0) {
+            this.latestPrices[sym.toUpperCase()] = {
+              symbol: sym.toUpperCase(),
+              price: last.close,
+              change24h: 0,
+              high24h: last.high,
+              low24h: last.low,
+              volume24h: last.volume,
+              timestamp: Date.now(),
+            };
+          }
         } catch (err) {
           logger.warn({ err, sym }, "Failed to load candle history");
         }
@@ -157,6 +169,18 @@ class BinanceStreamManager {
       closeTime: k.T,
     };
     candleCache.upsert(symbol, candle);
+    if (candle.close > 0) {
+      const prev = this.latestPrices[symbol];
+      this.latestPrices[symbol] = {
+        symbol,
+        price: candle.close,
+        change24h: prev?.change24h ?? 0,
+        high24h: Math.max(prev?.high24h ?? 0, candle.high),
+        low24h: prev?.low24h ? Math.min(prev.low24h, candle.low) : candle.low,
+        volume24h: prev?.volume24h ?? candle.volume,
+        timestamp: Date.now(),
+      };
+    }
   }
 
   private handleDepth(symbol: string, raw: { bids: [string, string][]; asks: [string, string][] }) {

@@ -13,7 +13,7 @@ export const INTEL = {
   adxRange: 20,
   atrExtremePct: 4,
   atrHighPct: 2.5,
-  scaleOut: [0.33, 0.33, 0.34] as const,
+  scaleOut: [0.3, 0.3, 0.4] as const,
   consecutiveLossLimit: 3,
   consecutiveLossPauseMs: 60 * 60 * 1000,
 } as const;

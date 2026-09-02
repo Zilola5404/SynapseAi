@@ -110,7 +110,7 @@ export async function startTelegramBot() {
     can_join_groups: true,
     can_read_all_group_messages: false,
     supports_inline_queries: false,
-  };
+  } as typeof bot.botInfo;
   runningBot = bot;
   bot.catch(async (err) => {
     const msg = err.error instanceof Error ? err.error.message : String(err.error);
@@ -173,6 +173,8 @@ export async function startTelegramBot() {
   bot.command("scan", act("signals"));
   bot.command("risk", act("risk"));
   bot.command("keys", act("keys"));
+  bot.command("testorder", act("testorder"));
+  bot.command("testclose", act("testclose"));
   bot.command("unlock", act("unlock"));
   bot.command("diagnostic", act("status_tech"));
   bot.command("performance", act("stats"));

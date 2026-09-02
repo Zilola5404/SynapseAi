@@ -17,7 +17,9 @@ export function settingsScreen(lang: LocaleCode) {
     .text(lang === "en" ? "📊 Trading pairs" : "📊 Торговые пары", "pairs")
     .row()
     .text(lang === "en" ? "🔐 API connection" : "🔐 API подключение", "keys")
-    .text(lang === "en" ? "🛠 Advanced status" : "🛠 Технический статус", "status_tech");
+    .text(lang === "en" ? "🛠 Advanced status" : "🛠 Технический статус", "status_tech")
+    .row()
+    .text(lang === "en" ? "🧪 TEST ORDER" : "🧪 TEST ORDER", "testorder");
   navRow(kb.row(), lang);
   return { text, markup: kb };
 }

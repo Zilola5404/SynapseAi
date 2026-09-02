@@ -5,16 +5,14 @@ interface BinanceSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveConfig: (config: {
-    apiKey: string;
-    apiSecret: string;
     isTestnet: boolean;
     tradingType: 'SPOT' | 'FUTURES';
   }) => void;
   currentConfig: {
-    apiKey: string;
-    apiSecret: string;
     isTestnet: boolean;
     tradingType: 'SPOT' | 'FUTURES';
+    hasKeys?: boolean;
+    apiKeyMask?: string;
   };
 }
 
@@ -24,10 +22,10 @@ export const BinanceSettingsModal: React.FC<BinanceSettingsModalProps> = ({
   onSaveConfig,
   currentConfig,
 }) => {
-  const [apiKey, setApiKey] = useState(currentConfig.apiKey || '');
-  const [apiSecret, setApiSecret] = useState(currentConfig.apiSecret || '');
+  const [apiKey, setApiKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
   const [isTestnet, setIsTestnet] = useState(currentConfig.isTestnet ?? true);
-  const [tradingType, setTradingType] = useState<'SPOT' | 'FUTURES'>(currentConfig.tradingType || 'SPOT');
+  const [tradingType, setTradingType] = useState<'SPOT' | 'FUTURES'>(currentConfig.tradingType || 'FUTURES');
 
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{
@@ -38,10 +36,10 @@ export const BinanceSettingsModal: React.FC<BinanceSettingsModalProps> = ({
   } | null>(null);
 
   useEffect(() => {
-    setApiKey(currentConfig.apiKey || '');
-    setApiSecret(currentConfig.apiSecret || '');
+    setApiKey('');
+    setApiSecret('');
     setIsTestnet(currentConfig.isTestnet ?? true);
-    setTradingType(currentConfig.tradingType || 'SPOT');
+    setTradingType(currentConfig.tradingType || 'FUTURES');
   }, [currentConfig]);
 
   if (!isOpen) return null;
@@ -101,9 +99,9 @@ export const BinanceSettingsModal: React.FC<BinanceSettingsModalProps> = ({
   };
 
   const handleSave = () => {
+    setApiKey('');
+    setApiSecret('');
     onSaveConfig({
-      apiKey: apiKey.trim(),
-      apiSecret: apiSecret.trim(),
       isTestnet,
       tradingType,
     });
@@ -227,7 +225,8 @@ export const BinanceSettingsModal: React.FC<BinanceSettingsModalProps> = ({
           <div className="space-y-1">
             <p className="font-semibold text-amber-300">Рекомендация по безопасности:</p>
             <p className="text-[11px] leading-relaxed text-neutral-300">
-              Создайте API ключ в аккаунте Binance с разрешениями <b>Spot/Futures Trading</b> и <b>ОГРАНИЧЕНИЕМ IP</b>. Никогда не включайте права на вывод средств (Withdrawal).
+              API Key и Secret <b>не сохраняются в браузере</b>. Проверка идёт одним POST на сервер.
+              Для торговли сохраните ключи через Telegram <b>/keys</b> (encrypted DB). Никогда не включайте Withdrawal.
             </p>
           </div>
         </div>

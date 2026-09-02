@@ -54,7 +54,7 @@ export function detectRegime(params: {
   if (params.volatility === "EXTREME") return "HIGH_VOLATILITY";
   if (params.volatility === "LOW") return "LOW_VOLATILITY";
   if ((params.structure === "BULLISH" || params.structure === "BEARISH") && params.emaAligned) return "TRENDING";
-  if (params.emaAligned && params.volatility !== "LOW") return "TRENDING";
+  if (params.emaAligned) return "TRENDING";
   return "RANGING";
 }
 

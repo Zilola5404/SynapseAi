@@ -26,8 +26,8 @@ export function helpHome(lang: LocaleCode) {
 export function helpHow(lang: LocaleCode) {
   const text =
     lang === "en"
-      ? `📖 <b>How the bot works</b>\n\nYou press Start — I watch BTC, ETH and SOL.\n\nIf the trend and momentum look good, I check your risk limits.\n\nOnly then a trade can be opened.\n\nYou can stop new trades at any time. Open trades stay protected.`
-      : `📖 <b>Как работает бот?</b>\n\nВы нажимаете Старт — я слежу за BTC, ETH и SOL.\n\nЕсли тренд и импульс выглядят подходящими, я проверяю ваши лимиты риска.\n\nТолько после этого сделка может открыться.\n\nОстановить новые сделки можно в любой момент. Уже открытые останутся под защитой.`;
+      ? `📖 <b>How the bot works</b>\n\nYou press Start — I watch BTC, ETH and SOL.\n\nIf the trend and momentum look good, I check your risk limits.\n\nOnly then a trade can be opened.\n\nOn TESTNET: /testorder — min BTCUSDT order.\n/testclose — close the test position.\n/panic — kill switch (flattens exchange positions).`
+      : `📖 <b>Как работает бот?</b>\n\nВы нажимаете Старт — я слежу за BTC, ETH и SOL.\n\nЕсли тренд и импульс выглядят подходящими, я проверяю ваши лимиты риска.\n\nТолько после этого сделка может открыться.\n\nНа TESTNET: /testorder — минимальный ручной ордер BTCUSDT.\n/testclose — закрыть тестовую позицию.\n/panic — kill switch (закрывает позиции на бирже).`;
   const kb = new InlineKeyboard();
   navRow(kb, lang, "help");
   return { text, markup: kb };
@@ -36,8 +36,8 @@ export function helpHow(lang: LocaleCode) {
 export function helpProtect(lang: LocaleCode) {
   const text =
     lang === "en"
-      ? `🛡 <b>How protection works</b>\n\nEvery trade has:\n\n🔴 Stop Loss — a price that limits the loss\n🟢 Take Profit — a price that takes the profit\n\nThe bot watches these levels and closes the trade when they are reached.`
-      : `🛡 <b>Как работает защита?</b>\n\nУ каждой сделки есть:\n\n🔴 Stop Loss — цена, которая ограничивает убыток\n🟢 Take Profit — цена, которая фиксирует прибыль\n\nБот следит за этими уровнями и закрывает сделку, когда они достигнуты.`;
+      ? `🛡 <b>How protection works</b>\n\nEvery trade has:\n\n🔴 Stop Loss — on the exchange (STOP_MARKET, closePosition)\n🟢 Take Profit — TP1 30% / TP2 30% / TP3 40%\n\nAfter TP1 the position stays open and Stop Loss still covers the remainder.`
+      : `🛡 <b>Как работает защита?</b>\n\nУ каждой сделки есть:\n\n🔴 Stop Loss — на бирже (STOP_MARKET, closePosition)\n🟢 Take Profit — TP1 30% / TP2 30% / TP3 40%\n\nПосле TP1 позиция остаётся открытой, Stop Loss продолжает защищать остаток.`;
   const kb = new InlineKeyboard();
   navRow(kb, lang, "help");
   return { text, markup: kb };

@@ -9,8 +9,7 @@ interface ManualTradeModalProps {
   risk: RiskSettings;
   accountEquity: number;
   binanceConfig?: {
-    apiKey: string;
-    apiSecret: string;
+    hasKeys?: boolean;
     isTestnet: boolean;
     tradingType: 'SPOT' | 'FUTURES';
   };
@@ -64,10 +63,10 @@ export const ManualTradeModal: React.FC<ManualTradeModalProps> = ({
 
     const positionSize = marginUsdt * leverage;
     const quantity = Number((positionSize / executionPrice).toFixed(4));
-    const isBinanceConnected = binanceConfig?.apiKey && binanceConfig.apiKey.length > 5;
+    const isBinanceConnected = Boolean(binanceConfig?.hasKeys);
 
     try {
-      // Execute through backend Binance order engine endpoint
+      // Direct dashboard orders are disabled — execution is Telegram / TradingOrchestrator only.
       const res = await fetch('/api/binance/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,8 +78,6 @@ export const ManualTradeModal: React.FC<ManualTradeModalProps> = ({
           price: orderType === 'LIMIT' ? limitPrice : undefined,
           isFutures: binanceConfig?.tradingType === 'FUTURES',
           isTestnet: binanceConfig?.isTestnet ?? true,
-          apiKey: binanceConfig?.apiKey,
-          apiSecret: binanceConfig?.apiSecret,
         }),
       });
 

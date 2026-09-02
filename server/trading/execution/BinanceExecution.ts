@@ -165,6 +165,7 @@ export class BinanceExecution implements ExecutionProvider {
     slClientId: string;
     tpClientId: string;
     quantity: number;
+    takeProfits?: { price: number; quantity: number; clientOrderId: string }[];
   }) {
     const closeSide = params.entrySide === "BUY" ? "SELL" : "BUY";
     const qty = roundQty(params.symbol, params.quantity, this.isTestnet);
@@ -175,16 +176,27 @@ export class BinanceExecution implements ExecutionProvider {
       stopPrice: roundPrice(params.symbol, params.stopLoss, this.isTestnet),
       quantity: qty,
       clientOrderId: params.slClientId,
+      closePosition: true,
     });
-    const tp = await this.placeAlgoWithRetry({
-      symbol: params.symbol,
-      side: closeSide,
-      type: "TAKE_PROFIT_MARKET",
-      stopPrice: roundPrice(params.symbol, params.takeProfit, this.isTestnet),
-      quantity: qty,
-      clientOrderId: params.tpClientId,
-    });
-    return { slOrderId: sl.orderId, tpOrderId: tp.orderId };
+    const legs =
+      params.takeProfits && params.takeProfits.length > 0
+        ? params.takeProfits
+        : [{ price: params.takeProfit, quantity: qty, clientOrderId: params.tpClientId }];
+    const tpOrderIds: string[] = [];
+    for (const leg of legs) {
+      const tpQty = roundQty(params.symbol, leg.quantity, this.isTestnet);
+      if (tpQty <= 0) continue;
+      const tp = await this.placeAlgoWithRetry({
+        symbol: params.symbol,
+        side: closeSide,
+        type: "TAKE_PROFIT_MARKET",
+        stopPrice: roundPrice(params.symbol, leg.price, this.isTestnet),
+        quantity: tpQty,
+        clientOrderId: leg.clientOrderId,
+      });
+      if (tp.orderId) tpOrderIds.push(tp.orderId);
+    }
+    return { slOrderId: sl.orderId, tpOrderId: tpOrderIds[0], tpOrderIds };
   }
 
   private async placeAlgoWithRetry(params: {
@@ -194,6 +206,7 @@ export class BinanceExecution implements ExecutionProvider {
     stopPrice: number;
     quantity: number;
     clientOrderId: string;
+    closePosition?: boolean;
   }) {
     let lastErr = "algo not acknowledged";
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -213,8 +226,9 @@ export class BinanceExecution implements ExecutionProvider {
           side: params.side,
           type: params.type,
           stopPrice: params.stopPrice,
-          quantity: params.quantity,
-          reduceOnly: true,
+          quantity: params.closePosition ? undefined : params.quantity,
+          reduceOnly: params.closePosition ? undefined : true,
+          closePosition: params.closePosition || undefined,
           newClientOrderId: params.clientOrderId,
         });
         const confirmed = await queryFuturesOrder({
@@ -261,6 +275,7 @@ export class BinanceExecution implements ExecutionProvider {
       stopPrice: roundPrice(params.symbol, params.stopLoss, this.isTestnet),
       quantity: roundQty(params.symbol, params.quantity, this.isTestnet),
       clientOrderId: params.slClientId,
+      closePosition: true,
     });
     if (params.oldSlOrderId) {
       await this.cancelProtective({ symbol: params.symbol, slOrderId: params.oldSlOrderId });

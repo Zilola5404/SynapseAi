@@ -53,9 +53,8 @@ export async function getDecryptedCredentials(userId: string) {
 
   const key = tryDecryptApiKey(row.apiKeyEncrypted);
   const secret = tryDecryptApiKey(row.apiSecretEncrypted);
-  if (!key.ok || !secret.ok) {
-    throw new Error(key.ok ? secret.error : key.error);
-  }
+  if (key.ok === false) throw new Error(key.error);
+  if (secret.ok === false) throw new Error(secret.error);
 
   return {
     apiKey: key.value,

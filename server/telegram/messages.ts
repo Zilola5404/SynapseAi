@@ -74,12 +74,12 @@ export function tradeClosedMessage(
       : "";
   if (p.pnl >= 0) {
     return lang === "en"
-      ? `🟢 <b>TRADE CLOSED</b>\n\n${coin(p.symbol)}\n\n📈 Net profit:\n${money(p.pnl)}${gross}${feeBlock}\n\n📌 Reason:\n${reason}\n\n🎯 The trade was closed automatically.`
-      : `🟢 <b>СДЕЛКА ЗАКРЫТА</b>\n\n${coin(p.symbol)}\n\n📈 Чистая прибыль:\n${money(p.pnl)}${gross}${feeBlock}\n\n📌 Причина:\n${reason}\n\n🎯 Сделка завершена автоматически.`;
+      ? `🔒 <b>TRADE CLOSED</b>\n\n${coin(p.symbol)}\n\nReason:\n${reason}\n\n💰 PnL:\n${money(p.pnl)}${gross}${feeBlock}\n\nNet:\n${money(p.pnl)}`
+      : `🔒 <b>СДЕЛКА ЗАКРЫТА</b>\n\n${coin(p.symbol)}\n\nПричина:\n${reason}\n\n💰 PnL:\n${money(p.pnl)}${gross}${feeBlock}\n\nИтог:\n${money(p.pnl)}`;
   }
   return lang === "en"
-    ? `🔴 <b>TRADE CLOSED</b>\n\n${coin(p.symbol)}\n\n📉 Net result:\n${money(p.pnl)}${gross}${feeBlock}\n\n📌 Reason:\n${reason}\n\n🛡 The loss was limited by the risk management system.`
-    : `🔴 <b>СДЕЛКА ЗАКРЫТА</b>\n\n${coin(p.symbol)}\n\n📉 Чистый результат:\n${money(p.pnl)}${gross}${feeBlock}\n\n📌 Причина:\n${reason}\n\n🛡 Убыток был ограничен системой\nуправления рисками.`;
+    ? `🔒 <b>TRADE CLOSED</b>\n\n${coin(p.symbol)}\n\nReason:\n${reason}\n\n💰 PnL:\n${money(p.pnl)}${gross}${feeBlock}\n\nNet:\n${money(p.pnl)}`
+    : `🔒 <b>СДЕЛКА ЗАКРЫТА</b>\n\n${coin(p.symbol)}\n\nПричина:\n${reason}\n\n💰 PnL:\n${money(p.pnl)}${gross}${feeBlock}\n\nИтог:\n${money(p.pnl)}`;
 }
 
 export function signalNotifyMessage(

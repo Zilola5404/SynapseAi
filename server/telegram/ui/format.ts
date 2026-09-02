@@ -43,8 +43,8 @@ export function closeReasonLabel(reason: string, locale: "ru" | "en") {
   const mapRu: Record<string, string> = {
     STOP_LOSS: "Сработал Stop Loss",
     TAKE_PROFIT: "Достигнута цель Take Profit",
-    MANUAL: "Закрыта вручную",
-    KILL_SWITCH: "Экстренная остановка",
+    MANUAL: "Manual Close",
+    KILL_SWITCH: "Kill Switch",
     PROTECTION_FAILURE: "Сделка закрыта системой защиты",
     MAX_DRAWDOWN: "Достигнут лимит просадки",
     RETRY: "Повторное закрытие",
@@ -55,8 +55,8 @@ export function closeReasonLabel(reason: string, locale: "ru" | "en") {
   const mapEn: Record<string, string> = {
     STOP_LOSS: "Stop Loss was triggered",
     TAKE_PROFIT: "Take Profit target was reached",
-    MANUAL: "Closed manually",
-    KILL_SWITCH: "Emergency stop",
+    MANUAL: "Manual Close",
+    KILL_SWITCH: "Kill Switch",
     PROTECTION_FAILURE: "Closed by the protection system",
     MAX_DRAWDOWN: "Drawdown limit reached",
     RETRY: "Close retry",
