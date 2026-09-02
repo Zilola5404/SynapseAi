@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { RiskSettings, User } from "@prisma/client";
 import { planPositionSize, sizePosition } from "./risk/PositionSizer.js";
-import { evaluateRisk } from "./risk/RiskEngine.js";
+import { evaluateRisk, peakForTradingVenue } from "./risk/RiskEngine.js";
 import { applyPaperFill, SLIPPAGE, TAKER_FEE } from "./execution/ExecutionProvider.js";
 import { paperExecution } from "./execution/PaperExecution.js";
 import { canTransition, makeClientOrderId } from "./execution/orderState.js";
@@ -62,6 +62,7 @@ const user = {
   scannerEnabled: true,
   autoTradeEnabled: true,
   pauseUntil: null,
+  tradingMode: "PAPER",
   peakEquityUsdt: 10000,
   paperBalanceUsdt: 10000,
 } as User;
@@ -99,6 +100,40 @@ assert.equal(evaluateRisk({
   openExposureUsdt: 0,
   realizedPnl24h: 0,
 }).allowed, true);
+
+assert.equal(
+  peakForTradingVenue({ tradingMode: "TESTNET", peakEquityUsdt: 10000, paperBalanceUsdt: 9903.4, equity: 5000 }),
+  5000
+);
+assert.equal(
+  peakForTradingVenue({ tradingMode: "PAPER", peakEquityUsdt: 10000, paperBalanceUsdt: 10000, equity: 5000 }),
+  10000
+);
+const demoUser = { ...user, tradingMode: "TESTNET" } as User;
+assert.equal(
+  evaluateRisk({
+    user: demoUser,
+    risk,
+    signal,
+    equity: 5000,
+    openCount: 0,
+    openExposureUsdt: 0,
+    realizedPnl24h: 0,
+  }).allowed,
+  true
+);
+assert.equal(
+  evaluateRisk({
+    user,
+    risk,
+    signal,
+    equity: 5000,
+    openCount: 0,
+    openExposureUsdt: 0,
+    realizedPnl24h: 0,
+  }).allowed,
+  false
+);
 
 const sizedWithCap = evaluateRisk({
   user,

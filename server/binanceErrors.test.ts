@@ -13,5 +13,6 @@ assert.equal(rate.kind, "RATE_LIMIT");
 
 const key = classifyBinanceError(401, JSON.stringify({ code: -2015, msg: "Invalid API-key" }));
 assert.equal(key.kind, "INVALID_KEY");
+assert.match(formatBinanceError(key.kind, key.message), /demo\.binance\.com/);
 
 console.log("  PASS  Этап 4: классификация ошибок Binance (timestamp, margin, rate limit, keys)");

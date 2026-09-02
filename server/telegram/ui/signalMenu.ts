@@ -178,8 +178,8 @@ export function noTradeText(lang: LocaleCode, vetoes: { textRu: string; textEn: 
 
 export function signalExpiredText(lang: LocaleCode) {
   return lang === "en"
-    ? "⚠️ This signal has expired.\n\nThe market may have changed. Run a new analysis."
-    : "⚠️ Сигнал устарел.\n\nРынок изменился. Запустите новый анализ.";
+    ? "⚠️ SIGNAL STALE\n\nPrice already moved.\nSynapseAI cancelled the entry so it would not fill at a bad price.\n\n🤖 Looking for a new setup."
+    : "⚠️ СИГНАЛ УСТАРЕЛ\n\nЦена уже изменилась.\nЧтобы не открывать сделку по плохой цене,\nSynapseAI отменил вход.\n\n🤖 Продолжаю искать новый сетап.";
 }
 
 export function signalSkippedText(lang: LocaleCode) {

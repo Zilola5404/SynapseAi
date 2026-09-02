@@ -43,7 +43,7 @@ export function closeReasonLabel(reason: string, locale: "ru" | "en") {
   const mapRu: Record<string, string> = {
     STOP_LOSS: "Сработал Stop Loss",
     TAKE_PROFIT: "Достигнута цель Take Profit",
-    MANUAL: "Manual Close",
+    MANUAL: "Закрыта пользователем",
     KILL_SWITCH: "Kill Switch",
     PROTECTION_FAILURE: "Сделка закрыта системой защиты",
     MAX_DRAWDOWN: "Достигнут лимит просадки",
@@ -55,7 +55,7 @@ export function closeReasonLabel(reason: string, locale: "ru" | "en") {
   const mapEn: Record<string, string> = {
     STOP_LOSS: "Stop Loss was triggered",
     TAKE_PROFIT: "Take Profit target was reached",
-    MANUAL: "Manual Close",
+    MANUAL: "Closed by user",
     KILL_SWITCH: "Kill Switch",
     PROTECTION_FAILURE: "Closed by the protection system",
     MAX_DRAWDOWN: "Drawdown limit reached",
@@ -110,6 +110,9 @@ export function friendlyError(raw: string, locale: "ru" | "en") {
   }
   if (/LIVE|ALLOW_LIVE|confirm/i.test(s) && /live/i.test(s)) {
     return locale === "en" ? s : s;
+  }
+  if (/Просадка|лимит|Kill switch|LOCKED|TEST ORDER|ключ/i.test(s)) {
+    return `⚠️ ${s}`;
   }
   return locale === "en"
     ? "⚠️ Something went wrong. Please try again in a moment."

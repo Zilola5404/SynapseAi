@@ -32,13 +32,13 @@ function kindFromCode(code: number | null, status: number): BinanceErrorKind {
 export function formatBinanceError(kind: BinanceErrorKind, message: string): string {
   switch (kind) {
     case "TIMESTAMP":
-      return `Рассинхрон времени с Binance (-1021): ${message}. Проверьте часы сервера.`;
+      return `Рассинхрон часов с Binance (-1021). SynapseAI синхронизирует время автоматически — повторите /keys.`;
     case "INSUFFICIENT_MARGIN":
       return `Недостаточно маржи: ${message}`;
     case "RATE_LIMIT":
       return `Превышен лимит запросов Binance: ${message}`;
     case "INVALID_KEY":
-      return `Недействительные API-ключи Binance: ${message}`;
+      return `Binance не принял ключи для Futures Testnet/Demo (-2015). Нужны ключи с https://demo.binance.com (Demo Trading) или testnet.binancefuture.com — не с обычного binance.com. Права: Reading + Futures, без Withdrawal. Если включён IP whitelist — добавьте IP этого компьютера.`;
     default:
       return `Ошибка Binance: ${message}`;
   }

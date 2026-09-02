@@ -21,6 +21,13 @@ const tests = [
   "server/trading/killSwitchPolicy.test.ts",
   "server/trading/tpPolicy.test.ts",
   "server/security/browserSecrets.test.ts",
+  "server/services/credentialService.test.ts",
+  "server/exchanges/binance/timeSync.test.ts",
+  "server/trading/certification/noLookahead.test.ts",
+  "server/trading/certification/testnetPreflight.test.ts",
+  "server/trading/certification/safetyGates.test.ts",
+  "server/trading/reconciliation.test.ts",
+  "server/trading/strategy/setupStats.test.ts",
 ];
 
 async function runFile(file: string): Promise<number> {

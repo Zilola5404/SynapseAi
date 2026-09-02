@@ -1,0 +1,96 @@
+{
+  "at": "2026-09-02T19:54:47.004Z",
+  "allowLive": false,
+  "users": [
+    {
+      "id": "cmth3zrb",
+      "mode": "PAPER",
+      "locked": false,
+      "scanner": false,
+      "auto": false,
+      "hasTelegram": false
+    },
+    {
+      "id": "cmth40oa",
+      "mode": "PAPER",
+      "locked": false,
+      "scanner": false,
+      "auto": false,
+      "hasTelegram": false
+    },
+    {
+      "id": "cmthooc6",
+      "mode": "TESTNET",
+      "locked": false,
+      "scanner": false,
+      "auto": false,
+      "hasTelegram": true
+    }
+  ],
+  "openPositions": [],
+  "lastTestnetCloses": [
+    {
+      "symbol": "BTCUSDT",
+      "side": "LONG",
+      "entryPrice": 77166.98000000001,
+      "exitPrice": 77137.5,
+      "quantity": 0.002,
+      "pnl": -0.18,
+      "pnlPct": -0.35,
+      "grossPnl": -0.059,
+      "entryFeeUsdt": 0.0617,
+      "exitFeeUsdt": 0.0617,
+      "commissionUsdt": 0.1234,
+      "fundingUsdt": 0,
+      "exitReason": "EXCHANGE",
+      "exchangeOrderId": "28567641532",
+      "isPaperTrade": false,
+      "openedAt": "2026-09-02T19:31:40.826Z",
+      "closedAt": "2026-09-02T19:34:48.026Z"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "side": "LONG",
+      "entryPrice": 77327.5,
+      "exitPrice": 77177.5,
+      "quantity": 0.002,
+      "pnl": -0.42,
+      "pnlPct": -0.82,
+      "grossPnl": -0.3,
+      "entryFeeUsdt": 0.0619,
+      "exitFeeUsdt": 0.0617,
+      "commissionUsdt": 0.1236,
+      "fundingUsdt": 0,
+      "exitReason": "EXCHANGE",
+      "exchangeOrderId": "28567615142",
+      "isPaperTrade": false,
+      "openedAt": "2026-09-02T18:52:41.307Z",
+      "closedAt": "2026-09-02T19:29:45.074Z"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "side": "LONG",
+      "entryPrice": 77369.1,
+      "exitPrice": 77368.1,
+      "quantity": 0.002,
+      "pnl": -0.09,
+      "pnlPct": -0.17,
+      "grossPnl": -0.002,
+      "entryFeeUsdt": 0.0619,
+      "exitFeeUsdt": 0.0248,
+      "commissionUsdt": 0.0867,
+      "fundingUsdt": 0,
+      "exitReason": "EXCHANGE",
+      "exchangeOrderId": "28567613072",
+      "isPaperTrade": false,
+      "openedAt": "2026-09-02T18:49:43.216Z",
+      "closedAt": "2026-09-02T18:49:51.180Z"
+    }
+  ],
+  "signalGradeCounts": {
+    "A+": 0,
+    "A": 0,
+    "B": 0,
+    "sampleTooSmall": true
+  }
+}

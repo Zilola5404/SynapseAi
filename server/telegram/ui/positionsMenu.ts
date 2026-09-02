@@ -53,7 +53,7 @@ export function positionCard(
     .text(lang === "en" ? "🔄 Refresh" : "🔄 Обновить", `pos:${p.id}`)
     .text(lang === "en" ? "❓ Why this size?" : "❓ Почему такой размер?", `poswhy:${p.id}`)
     .row()
-    .text(lang === "en" ? "⛔ Close trade" : "⛔ Закрыть сделку", `close:${p.id}`);
+    .text(lang === "en" ? "🔴 Close trade" : "🔴 Закрыть сделку", `close:${p.id}`);
   navRow(kb.row(), lang, "positions");
   return { text, markup: kb };
 }

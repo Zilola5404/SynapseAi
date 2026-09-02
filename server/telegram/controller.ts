@@ -46,6 +46,7 @@ import { systemSnapshot } from "../routes/health.js";
 import { telegramRuntime } from "./runtime.js";
 import { paperSoakScreen } from "./ui/paperMenu.js";
 import { loadPaperSoak } from "./paperSoakQuery.js";
+import { testOrderProgressMessage, testOrderFilledMessage, tradeProtectionMessage } from "./messages.js";
 
 export type TgUser = User & { riskSettings: RiskSettings | null; credentials: ExchangeCredential | null };
 
@@ -682,16 +683,27 @@ export async function handleAction(
       return;
     }
     if (action === "testorder") {
-      await reply(
-        lang === "en"
-          ? "🧪 Sending a TESTNET-only min BTCUSDT order…"
-          : "🧪 Отправляю минимальный ордер BTCUSDT только на TESTNET…"
-      );
+      await reply(testOrderProgressMessage(lang), { parse_mode: "HTML" });
       const pos = await tradingOrchestrator.placeCertifiedTestOrder(user.id, "BTCUSDT");
+      const filled = pos as typeof pos & { tp1?: number; tp2?: number; tp3?: number };
       await reply(
-        lang === "en"
-          ? `🧪 <b>TEST ORDER</b>\n\n${pos.symbol} BUY\nOrder ID: <code>${pos.exchangeOrderId || pos.entryOrderId || "—"}</code>\nQty: ${pos.quantity}\nAvg: ${pos.entryPrice}\nSL: ${pos.stopLossPrice}\nStatus: OPEN`
-          : `🧪 <b>TEST ORDER</b>\n\n${pos.symbol} BUY\nOrder ID: <code>${pos.exchangeOrderId || pos.entryOrderId || "—"}</code>\nКоличество: ${pos.quantity}\nСредняя: ${pos.entryPrice}\nSL: ${pos.stopLossPrice}\nСтатус: OPEN`,
+        testOrderFilledMessage(lang, {
+          symbol: pos.symbol,
+          side: pos.side,
+          entry: pos.entryPrice,
+          quantity: pos.quantity,
+          orderId: String(pos.exchangeOrderId || pos.entryOrderId || "—"),
+          status: "FILLED",
+        }),
+        { parse_mode: "HTML" }
+      );
+      await reply(
+        tradeProtectionMessage(lang, {
+          sl: pos.stopLossPrice,
+          tp1: filled.tp1,
+          tp2: filled.tp2 || pos.takeProfitPrice,
+          tp3: filled.tp3,
+        }),
         { parse_mode: "HTML" }
       );
       return;

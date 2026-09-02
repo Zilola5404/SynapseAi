@@ -221,6 +221,7 @@ model OrderHistory {
   entryFeeUsdt    Float    @default(0)
   exitFeeUsdt     Float    @default(0)
   commissionUsdt  Float    @default(0)
+  fundingUsdt     Float    @default(0)
   status          String   @default("FILLED")
   exitReason      String?
   exchangeOrderId String?

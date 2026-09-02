@@ -1,0 +1,18 @@
+{
+  "startedAt": "2026-09-02T18:37:42.244Z",
+  "envKeysPresent": true,
+  "db": false,
+  "authAttempts": [
+    {
+      "label": "env",
+      "authenticated": true,
+      "isTestnet": true,
+      "equity": 5000,
+      "available": 5000
+    }
+  ],
+  "authenticated": true,
+  "btcMark": 77286,
+  "note": "authenticated via env — AUTH_ONLY, order skipped",
+  "finishedAt": "2026-09-02T18:37:49.341Z"
+}

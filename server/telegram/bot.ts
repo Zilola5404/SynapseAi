@@ -15,7 +15,8 @@ import { localeCode, getLocale } from "./locales/index.js";
 import { keysAsk, keysAskSecret } from "./ui/settingsMenu.js";
 import { keySessions } from "./state.js";
 import { saveExchangeCredentials, getDecryptedCredentials } from "../services/credentialService.js";
-import { testBinanceApiConnection } from "../binance.js";
+import { getFuturesAccount } from "../exchanges/binance/futuresClient.js";
+import { pingErrorHint } from "../exchanges/binance/keyProbe.js";
 import { installBotCommands } from "./installCommands.js";
 import type { Update } from "@grammyjs/types";
 
@@ -222,21 +223,45 @@ export async function startTelegramBot() {
           /* ignore */
         }
         keySessions.delete(String(ctx.from?.id));
-        const saved = await saveExchangeCredentials({
-          userId: user.id,
-          apiKey: sess.apiKey || "",
-          apiSecret: secret,
-          isTestnet: true,
-          tradingType: "FUTURES",
-        });
+        let saved: Awaited<ReturnType<typeof saveExchangeCredentials>>;
+        try {
+          saved = await saveExchangeCredentials({
+            userId: user.id,
+            apiKey: sess.apiKey || "",
+            apiSecret: secret,
+            isTestnet: true,
+            tradingType: "FUTURES",
+          });
+        } catch (saveErr) {
+          await ctx.reply(saveErr instanceof Error ? saveErr.message : "Не удалось сохранить ключи");
+          return;
+        }
         const creds = await getDecryptedCredentials(user.id);
-        const ping = creds
-          ? await testBinanceApiConnection(creds.apiKey, creds.apiSecret, true)
-          : { message: lang === "en" ? "no keys" : "нет ключей" };
+        let pingText = lang === "en" ? "no keys" : "нет ключей";
+        let authenticated = false;
+        if (creds) {
+          try {
+            const acc = await getFuturesAccount(creds.apiKey, creds.apiSecret, true);
+            authenticated = true;
+            pingText =
+              lang === "en"
+                ? `authenticated = true. Testnet equity $${acc.totalEquityUsdt}`
+                : `authenticated = true. Testnet баланс $${acc.totalEquityUsdt}`;
+            await prisma.user.update({ where: { id: user.id }, data: { tradingMode: "TESTNET" } });
+          } catch (err) {
+            const { classifyBinanceError, formatBinanceError } = await import("../binanceErrors.js");
+            const raw = err instanceof Error ? err.message : String(err);
+            const jsonStart = raw.indexOf("{");
+            const classified = classifyBinanceError(400, jsonStart >= 0 ? raw.slice(jsonStart) : raw);
+            pingText = `authenticated = false. ${formatBinanceError(classified.kind, classified.message)}`;
+            const hint = await pingErrorHint(creds.apiKey, creds.apiSecret, lang === "en" ? "en" : "ru");
+            if (hint) pingText = `authenticated = false. ${hint}`;
+          }
+        }
         await ctx.reply(
           lang === "en"
-            ? `Keys saved. Mask <code>${saved.apiKeyMask}</code>\n${ping.message}`
-            : `Ключи сохранены. Маска <code>${saved.apiKeyMask}</code>\n${ping.message}`,
+            ? `Keys saved. Mask <code>${saved.apiKeyMask}</code>\n${pingText}${authenticated ? "\n\nNow send /testorder" : ""}`
+            : `Ключи сохранены. Маска <code>${saved.apiKeyMask}</code>\n${pingText}${authenticated ? "\n\nТеперь нажмите /testorder" : ""}`,
           { parse_mode: "HTML" }
         );
         return;

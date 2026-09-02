@@ -48,7 +48,12 @@ export function evaluateRisk(params: {
     return deny(`Дневной лимит убытка достигнут (${risk.maxDailyLossPct}%).`);
   }
 
-  const peak = user.peakEquityUsdt || equity;
+  const peak = peakForTradingVenue({
+    tradingMode: user.tradingMode,
+    peakEquityUsdt: user.peakEquityUsdt,
+    paperBalanceUsdt: user.paperBalanceUsdt,
+    equity,
+  });
   if (peak > 0 && equity < peak) {
     const dd = ((peak - equity) / peak) * 100;
     if (dd >= risk.maxDrawdownPct) {
@@ -91,4 +96,21 @@ export function evaluateRisk(params: {
 
 function deny(reason: string): RiskDecision {
   return { allowed: false, reason, quantity: 0, sizeUsdt: 0, marginUsdt: 0, leverage: 1 };
+}
+
+/** PAPER default peak ($10k) must not block a smaller Futures Demo balance. */
+export function peakForTradingVenue(params: {
+  tradingMode: string;
+  peakEquityUsdt: number;
+  paperBalanceUsdt: number;
+  equity: number;
+}) {
+  if (params.tradingMode !== "PAPER") {
+    const looksLikePaperDefault = params.peakEquityUsdt >= 9999 && params.peakEquityUsdt <= 10001;
+    if (looksLikePaperDefault && params.equity > 0 && params.equity < 9000) {
+      return params.equity;
+    }
+  }
+  const peak = params.peakEquityUsdt || params.equity;
+  return peak > 0 ? peak : params.equity;
 }

@@ -19,11 +19,18 @@ export interface TechnicalIndicators {
   volatility: number;
 }
 
+/** Current USD-M Futures Demo REST. Keys from demo.binance.com. */
+export const BINANCE_FUTURES_TESTNET_URL_DEFAULT = "https://demo-fapi.binance.com";
+/** Legacy Futures Testnet REST (keys from testnet.binancefuture.com). */
+export const BINANCE_FUTURES_TESTNET_URL_LEGACY = "https://testnet.binancefuture.com";
+
 export function getBinanceBaseUrl(isTestnet: boolean = true, isFutures: boolean = false): string {
   if (isFutures) {
-    return isTestnet ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
+    if (!isTestnet) return "https://fapi.binance.com";
+    const custom = (process.env.BINANCE_FUTURES_TESTNET_URL || "").trim().replace(/\/$/, "");
+    return custom || BINANCE_FUTURES_TESTNET_URL_DEFAULT;
   }
-  return isTestnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
+  return isTestnet ? "https://testnet.binance.vision" : "https://api.binance.com";
 }
 
 export function createBinanceSignature(queryString: string, apiSecret: string): string {
@@ -159,38 +166,12 @@ export async function fetchBinanceAccountBalance(
   apiSecret: string,
   isTestnet: boolean = true
 ): Promise<{ totalEquityUsdt: number; availableBalanceUsdt: number; balances: any[] }> {
-  const baseUrl = getBinanceBaseUrl(isTestnet, false);
-  const timestamp = Date.now();
-  const queryString = `recvWindow=5000&timestamp=${timestamp}`;
-  const signature = createBinanceSignature(queryString, apiSecret);
-
-  const url = `${baseUrl}/api/v3/account?${queryString}&signature=${signature}`;
-
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'X-MBX-APIKEY': apiKey,
-      'User-Agent': 'SynapseCryptoAI/1.0',
-    },
-  });
-
-  if (!res.ok) {
-    const errBody = await res.text();
-    throw new Error(`Binance Account Auth Failed (${res.status}): ${errBody}`);
-  }
-
-  const accountData = await res.json();
-  const balances = accountData.balances || [];
-
-  // Find USDT free and total balance
-  const usdtObj = balances.find((b: any) => b.asset === 'USDT');
-  const freeUsdt = usdtObj ? parseFloat(usdtObj.free) : 0;
-  const lockedUsdt = usdtObj ? parseFloat(usdtObj.locked) : 0;
-
+  const { getFuturesAccount } = await import("./exchanges/binance/futuresClient.js");
+  const acc = await getFuturesAccount(apiKey, apiSecret, isTestnet);
   return {
-    totalEquityUsdt: Number((freeUsdt + lockedUsdt).toFixed(2)),
-    availableBalanceUsdt: Number(freeUsdt.toFixed(2)),
-    balances: balances.filter((b: any) => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0),
+    totalEquityUsdt: acc.totalEquityUsdt,
+    availableBalanceUsdt: acc.availableBalanceUsdt,
+    balances: [],
   };
 }
 
@@ -422,15 +403,16 @@ export async function testBinanceApiConnection(
   apiSecret?: string,
   isTestnet: boolean = true
 ): Promise<{ success: boolean; pingMs: number; authenticated: boolean; message: string; balance?: any }> {
-  const baseUrl = getBinanceBaseUrl(isTestnet, false);
   const start = Date.now();
 
   try {
-    const pingRes = await fetch(`${baseUrl}/api/v3/ping`);
+    const { pingFuturesRest } = await import("./exchanges/binance/futuresClient.js");
+    const { classifyBinanceError, formatBinanceError } = await import("./binanceErrors.js");
+    const publicOk = await pingFuturesRest(isTestnet);
     const pingMs = Date.now() - start;
 
-    if (!pingRes.ok) {
-      return { success: false, pingMs, authenticated: false, message: 'Не удалось связаться с серверами Binance' };
+    if (!publicOk) {
+      return { success: false, pingMs, authenticated: false, message: 'Не удалось связаться с Binance Futures Testnet' };
     }
 
     if (apiKey && apiSecret && apiKey.trim().length > 10 && apiSecret.trim().length > 10) {
@@ -444,11 +426,14 @@ export async function testBinanceApiConnection(
           balance: balanceInfo,
         };
       } catch (authErr: any) {
+        const raw = String(authErr?.message || "");
+        const jsonStart = raw.indexOf("{");
+        const classified = classifyBinanceError(400, jsonStart >= 0 ? raw.slice(jsonStart) : raw);
         return {
           success: false,
           pingMs,
           authenticated: false,
-          message: `Ошибка авторизации ключей Binance: ${authErr?.message || 'Неверный API key/secret'}`,
+          message: `Ошибка авторизации ключей Binance: ${formatBinanceError(classified.kind, classified.message)}`,
         };
       }
     }

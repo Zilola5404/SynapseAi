@@ -116,8 +116,8 @@ export function pairsScreen(lang: LocaleCode, pairs: string[]) {
 
 export function keysAsk(lang: LocaleCode) {
   return lang === "en"
-    ? "🔐 Send your Binance API Key. The secret is encrypted and will not be shown in chat. /cancel to abort."
-    : "🔐 Пришлите Binance API Key. Секрет будет зашифрован и не вернётся в чат. /cancel чтобы отменить.";
+    ? "🔐 Send your Binance USD-M Futures Demo API Key.\n\nCreate keys at https://demo.binance.com → API Management.\nNOT live binance.com, and NOT Spot Testnet testnet.binance.vision.\nPermissions: Enable Reading + Enable Futures, no Withdrawal.\nCopy Key and Secret separately.\n\n/cancel to abort."
+    : "🔐 Пришлите API Key для Binance USD-M Futures Demo.\n\nГде создать: https://demo.binance.com → API Management\nНе обычный binance.com и не Spot Testnet (testnet.binance.vision).\nПрава: Enable Reading + Enable Futures, без Withdrawal.\nKey и Secret копируйте отдельно.\n\n/cancel чтобы отменить.";
 }
 
 export function keysAskSecret(lang: LocaleCode) {

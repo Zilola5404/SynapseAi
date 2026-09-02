@@ -14,6 +14,7 @@
     "db:down": "docker compose down",
     "db:migrate": "prisma db push",
     "db:generate": "prisma generate",
+    "test": "tsx scripts/test-stages.ts",
     "test:backend": "tsx scripts/test-stages.ts",
     "test:stage1:db": "tsx scripts/test-stage1-db.ts",
     "test:stage1": "tsx server/crypto/apiKeys.test.ts",

@@ -6,9 +6,46 @@ import { config } from "../config.js";
 import { workerSnapshot, isEngineReady } from "../services/tradingEngine.js";
 import { userStreamCount } from "../market/userDataStream.js";
 import { getFuturesAccount, pingFuturesRest } from "../exchanges/binance/futuresClient.js";
+import { readEnvBinanceKeys, resolveTestnetCredentials } from "../services/credentialService.js";
 import { telegramRuntime } from "../telegram/runtime.js";
 import { marketDataProvider, futuresMarketDataUrl } from "../market/MarketDataProvider.js";
 import { livePositionStatus } from "../trading/positionState.js";
+
+let authCache: { value: boolean; at: number } | null = null;
+const AUTH_TTL_MS = 30_000;
+
+async function probeBinanceAuth(useTestnet: boolean): Promise<boolean> {
+  if (authCache && Date.now() - authCache.at < AUTH_TTL_MS) return authCache.value;
+  let ok = false;
+  const envKeys = readEnvBinanceKeys();
+  if (envKeys) {
+    try {
+      await getFuturesAccount(envKeys.apiKey, envKeys.apiSecret, useTestnet);
+      ok = true;
+    } catch {
+      /* try encrypted DB next */
+    }
+  }
+  if (!ok) {
+    const users = await prisma.user.findMany({
+      where: { telegramId: { not: null } },
+      select: { id: true },
+    });
+    for (const u of users) {
+      const creds = await resolveTestnetCredentials(u.id);
+      if (!creds) continue;
+      try {
+        await getFuturesAccount(creds.apiKey, creds.apiSecret, true);
+        ok = true;
+        break;
+      } catch {
+        /* next user */
+      }
+    }
+  }
+  authCache = { value: ok, at: Date.now() };
+  return ok;
+}
 
 export const healthRouter = Router();
 
@@ -40,15 +77,7 @@ export async function systemSnapshot() {
   const telegram = Boolean(config.telegramBotToken);
   const ai = Boolean(config.geminiApiKey);
   const binanceRest = await pingFuturesRest(config.binanceUseTestnet);
-  let binanceAuthenticated = false;
-  if (config.binanceApiKey && config.binanceApiSecret) {
-    try {
-      await getFuturesAccount(config.binanceApiKey, config.binanceApiSecret, config.binanceUseTestnet);
-      binanceAuthenticated = true;
-    } catch {
-      binanceAuthenticated = false;
-    }
-  }
+  const binanceAuthenticated = await probeBinanceAuth(config.binanceUseTestnet);
   return {
     postgres,
     redis,
@@ -56,6 +85,10 @@ export async function systemSnapshot() {
     binanceAuthenticated,
     binanceWs: ws.connected,
     marketDataHealthy: marketDataProvider.isHealthy(),
+    marketDataState: marketDataProvider.dataState(),
+    lastMarketUpdate: marketDataProvider.lastMarketUpdate()
+      ? new Date(marketDataProvider.lastMarketUpdate()).toISOString()
+      : null,
     marketDataUrl: futuresMarketDataUrl(),
     telegram,
     telegramPolling: telegramRuntime.polling,

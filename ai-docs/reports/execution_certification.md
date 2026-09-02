@@ -97,7 +97,7 @@ Runtime: `/panic` после открытого TESTNET ордера.
 
 ## Как закрыть пункты 3–10 у себя
 
-1. Ключи [Binance Futures Testnet](https://testnet.binancefuture.com/) в локальный `.env` (не в git):
+1. Ключи [Binance Demo Trading](https://demo.binance.com/) (или legacy [testnet.binancefuture.com](https://testnet.binancefuture.com/)) в `/keys` или локальный `.env` (не в git):
 
 ```
 BINANCE_TESTNET=true
@@ -112,4 +112,15 @@ BINANCE_API_SECRET=...
 6. На testnet.binancefuture.com: позиция + STOP_MARKET.
 7. `/testclose` или `/panic` (kill switch).
 
-Пока ключей нет, **утверждать FILLED нельзя**. Инфраструктура исполнения готова, live-доказательства — после ключей.
+## Live probe 2026-09-02 17:36 UTC+3
+
+Скрипт `scripts/live-execution-cert.ts` (`AUTH_ONLY=1`):
+
+- Часы: offset ≈ **+10 с** к Binance; `-1021` закрыт (time sync + `recvWindow=60000`)
+- REST: `demo-fapi.binance.com` и `testnet.binancefuture.com` отвечают; ключи `uGCh...W0T` на обоих → **`-2015` Invalid API-key, IP, or permissions**
+- `/api/health`: `binanceAuthenticated: false`, Telegram polling **ON**, workers **ON**, BTC mark **77111.5**
+- Lint: `tsc --noEmit` **PASS**
+- Browser secrets unit: **PASS**
+
+FILLED / позиция / SL на бирже / Telegram PnL / kill-switch runtime — **не доказаны**. Нужны ключи Demo Trading с [demo.binance.com](https://demo.binance.com); Key и Secret копировать отдельно.
+

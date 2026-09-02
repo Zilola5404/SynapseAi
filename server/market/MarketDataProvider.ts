@@ -25,16 +25,32 @@ export function futuresKlinesPath(symbol: string, interval: string, limit: numbe
   return `/fapi/v1/klines?symbol=${clean}&interval=${interval}&limit=${limit}`;
 }
 
+export type MarketDataState = "DATA_FRESH" | "DATA_STALE" | "DATA_UNAVAILABLE";
+
+export const MARKET_DATA_STALE_MS = Number(process.env.MARKET_DATA_STALE_MS || 120_000);
+
 export class MarketDataCircuit {
   consecutiveFailures = 0;
   degraded = false;
+  lastSuccessAt = 0;
   private alertedDegraded = false;
+
+  dataState(): MarketDataState {
+    if (this.degraded) return "DATA_UNAVAILABLE";
+    if (this.lastSuccessAt > 0 && Date.now() - this.lastSuccessAt > MARKET_DATA_STALE_MS) return "DATA_STALE";
+    return "DATA_FRESH";
+  }
+
+  canOpenNewTrades() {
+    return this.dataState() === "DATA_FRESH";
+  }
 
   recordSuccess() {
     const was = this.degraded;
     this.consecutiveFailures = 0;
     this.degraded = false;
     this.alertedDegraded = false;
+    this.lastSuccessAt = Date.now();
     if (was) {
       bootLog("[MARKET] API HEALTHY — scanning can resume");
       logger.info("Market data API HEALTHY");
@@ -77,6 +93,18 @@ export class MarketDataProvider {
 
   isHealthy() {
     return !this.circuit.degraded;
+  }
+
+  dataState() {
+    return this.circuit.dataState();
+  }
+
+  lastMarketUpdate() {
+    return this.circuit.lastSuccessAt;
+  }
+
+  canOpenNewTrades() {
+    return this.circuit.canOpenNewTrades();
   }
 
   async fetchKlines(params: {

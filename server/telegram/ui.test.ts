@@ -9,8 +9,10 @@ assert.equal(sideLabel("LONG", "ru"), "Покупка 📈");
 assert.equal(sideLabel("SHORT", "ru"), "Продажа 📉");
 assert.equal(closeReasonLabel("STOP_LOSS", "ru"), "Сработал Stop Loss");
 assert.equal(closeReasonLabel("TAKE_PROFIT", "ru"), "Достигнута цель Take Profit");
+assert.equal(closeReasonLabel("MANUAL", "ru"), "Закрыта пользователем");
 assert.match(money(-7.54), /\-\$7\.54/);
 assert.match(friendlyError("Connect Timeout Error", "ru"), /Временно не удалось/);
+assert.match(friendlyError("Просадка 50.00% >= 8%", "ru"), /Просадка/);
 assert.doesNotMatch(friendlyError("Connect Timeout Error", "ru"), /ConnectTimeout|api\.binance/);
 assert.match(
   tradeOpenedMessage("ru", {
@@ -28,6 +30,7 @@ assert.match(
   }),
   /Размер сделки: \$100\.00[\s\S]*Использовано средств: \$50\.00[\s\S]*Плечо: x2[\s\S]*Максимальный риск по сделке: \$5\.00/
 );
+assert.equal(closeReasonLabel("MANUAL", "ru"), "Закрыта пользователем");
 assert.match(tradeClosedMessage("ru", { symbol: "BTCUSDT", pnl: 18, fees: 2, reason: "TAKE_PROFIT", grossPnl: 20, entryFee: 1, exitFee: 1 }), /СДЕЛКА ЗАКРЫТА[\s\S]*Комиссия входа[\s\S]*Комиссия выхода/);
 assert.equal(matchReply("▶️ Старт", "ru"), "start_bot");
 assert.equal(matchReply("❓ Помощь", "ru"), "help");

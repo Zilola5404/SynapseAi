@@ -18,7 +18,7 @@ import { BinanceExecution } from "../execution/BinanceExecution.js";
 import type { ExecutionProvider } from "../execution/ExecutionProvider.js";
 import { TAKER_FEE } from "../execution/ExecutionProvider.js";
 import { filterSignal } from "../../ai/AIContextFilter.js";
-import { getDecryptedCredentials } from "../../services/credentialService.js";
+import { getDecryptedCredentials, resolveTestnetCredentials } from "../../services/credentialService.js";
 import { binanceWsManager } from "../../websocket.js";
 import { realizedPnl24h } from "../../services/orderService.js";
 import { equityForUser } from "../equity.js";
@@ -33,6 +33,8 @@ import { TP_SCALE_OUT } from "../tpPolicy.js";
 import { KILL_SWITCH_POLICY } from "../killSwitchPolicy.js";
 import { fetchLastPrice } from "../../market/markPrice.js";
 import { minTradeQty, splitScaleOutQty } from "../../exchanges/binance/precision.js";
+import { runTestnetPreflight } from "../certification/testnetPreflight.js";
+import { formatPositionMismatch } from "../reconciliation.js";
 import type { StrategySignal, TradingMode } from "../types.js";
 import type { ActivePosition, User } from "@prisma/client";
 
@@ -58,9 +60,9 @@ export function parseIntelPlan(raw: string | null | undefined) {
 export async function providerFor(user: User): Promise<ExecutionProvider> {
   const mode = (user.tradingMode as TradingMode) || "PAPER";
   if (mode === "PAPER") return paperExecution;
-  const creds = await getDecryptedCredentials(user.id).catch(() => null);
-  if (!creds) throw new Error("Нет ключей Binance для TESTNET/LIVE");
   if (mode === "LIVE") {
+    const creds = await getDecryptedCredentials(user.id).catch(() => null);
+    if (!creds) throw new Error("Нет ключей Binance для LIVE");
     if (process.env.ALLOW_LIVE !== "true") {
       throw new Error("LIVE выключен. После testnet задайте ALLOW_LIVE=true.");
     }
@@ -68,6 +70,12 @@ export async function providerFor(user: User): Promise<ExecutionProvider> {
       throw new Error("LIVE не подтверждён в Telegram (CONFIRM LIVE).");
     }
     return new BinanceExecution("LIVE", creds.apiKey, creds.apiSecret, false);
+  }
+  const creds = await resolveTestnetCredentials(user.id);
+  if (!creds) {
+    throw new Error(
+      "Нет Binance Testnet ключей. Сохраните их через /keys или задайте BINANCE_API_KEY и BINANCE_API_SECRET в .env на сервере."
+    );
   }
   return new BinanceExecution("TESTNET", creds.apiKey, creds.apiSecret, true);
 }
@@ -149,8 +157,8 @@ export class TradingOrchestrator {
     if (mode === "LIVE") throw new Error("LIVE только через двойное подтверждение");
     const data: { tradingMode: string; liveConfirmedAt: null } = { tradingMode: mode, liveConfirmedAt: null };
     if (mode === "TESTNET") {
-      const creds = await getDecryptedCredentials(userId).catch(() => null);
-      if (!creds) throw new Error("Сначала /keys — нужны Binance Testnet ключи");
+      const creds = await resolveTestnetCredentials(userId);
+      if (!creds) throw new Error("Сначала /keys или BINANCE_API_KEY/SECRET в .env сервера");
     }
     await prisma.user.update({ where: { id: userId }, data });
     await writeSystemLog({ userId, level: "INFO", action: "MODE", details: mode });
@@ -160,12 +168,23 @@ export class TradingOrchestrator {
   async placeCertifiedTestOrder(userId: string, symbol = "BTCUSDT") {
     const user = await prisma.user.findUnique({ where: { id: userId }, include: { riskSettings: true } });
     if (!user?.riskSettings) throw new Error("Нет профиля риска");
-    if (user.tradingMode !== "TESTNET") {
-      throw new Error("TEST ORDER только в режиме TESTNET. Сначала /keys и режим TESTNET.");
+    const keys = await resolveTestnetCredentials(userId);
+    if (!keys) {
+      throw new Error(
+        "TEST ORDER нужен Binance Futures Testnet API Key+Secret. Пришлите через /keys или пропишите BINANCE_API_KEY и BINANCE_API_SECRET в .env (не в git)."
+      );
     }
-    const mark = await fetchLastPrice(symbol);
+    const pre = await runTestnetPreflight(userId, symbol);
+    if (!pre.ok) {
+      const fail = pre.steps.filter((s) => !s.ok).map((s) => `${s.name}: ${s.detail}`).join("; ");
+      throw new Error(`Testnet preflight failed — ${fail}`);
+    }
+    if (user.tradingMode !== "TESTNET") {
+      await this.setMode(userId, "TESTNET");
+    }
+    const mark = pre.price || (await fetchLastPrice(symbol));
     if (!mark) throw new Error("Нет цены BTCUSDT — нет ордера");
-    const qty = minTradeQty(symbol, mark, true);
+    const qty = pre.qty || minTradeQty(symbol, mark, true);
     if (qty <= 0) throw new Error("Не удалось подобрать минимальный лот BTCUSDT");
     const sl = Number((mark * 0.985).toFixed(2));
     const tp1 = Number((mark * 1.004).toFixed(2));
@@ -190,7 +209,7 @@ export class TradingOrchestrator {
       strategy: "TEST_ORDER",
     };
     const pos = await this.openFromSignal(userId, signal, "manual", undefined, { quantity: qty, skipAi: true });
-    return pos;
+    return Object.assign(pos, { tp1, tp2, tp3, requestedPrice: mark });
   }
 
   async enableLive(userId: string) {
@@ -280,8 +299,8 @@ export class TradingOrchestrator {
       const user = await prisma.user.findUnique({ where: { id: userId }, include: { riskSettings: true } });
       if (!user?.riskSettings) throw new Error("Нет профиля риска");
 
-      if (!marketDataProvider.isHealthy() && source === "auto") {
-        logger.warn({ symbol: signal.symbol }, "[AUTO] Market data DEGRADED — no trade");
+      if (!marketDataProvider.canOpenNewTrades() && source === "auto") {
+        logger.warn({ symbol: signal.symbol, state: marketDataProvider.dataState() }, "[AUTO] Market data not fresh — no trade");
         throw new Error("MARKET DATA DEGRADED — no new trades");
       }
 
@@ -529,10 +548,11 @@ export class TradingOrchestrator {
           if (!prot.tpOrderId && !(prot.tpOrderIds && prot.tpOrderIds.length)) {
             throw new Error(`protection incomplete sl=${prot.slOrderId} tp=-`);
           }
-          await prisma.activePosition.update({
+          const protectedPos = await prisma.activePosition.update({
             where: { id: pos.id },
             data: { slOrderId: prot.slOrderId, tpOrderId: prot.tpOrderId || prot.tpOrderIds?.[0] || null },
           });
+          Object.assign(pos, protectedPos);
           await transitionOrder(slOrder.id, "ACKNOWLEDGED", {
             exchangeOrderId: prot.slOrderId,
             reason: "SL confirmed on exchange (closePosition)",
@@ -893,6 +913,7 @@ export class TradingOrchestrator {
           grossPnl: Number(priced.grossPnl.toFixed(4)),
           entryFeeUsdt: Number(priced.entryFee.toFixed(4)),
           exitFeeUsdt: Number(priced.exitFee.toFixed(4)),
+          fundingUsdt: Number(priced.fundingUsdt.toFixed(4)),
           commissionUsdt: Number(priced.totalFees.toFixed(4)),
           status: "CLOSED",
           exitReason: reason,
@@ -983,6 +1004,9 @@ export class TradingOrchestrator {
         grossPnl: priced.grossPnl,
         entryFee: priced.entryFee,
         exitFee: priced.exitFee,
+        funding: priced.fundingUsdt,
+        entry: pos.entryPrice,
+        exit: exitPrice,
       })
     );
     await writeSystemLog({
@@ -1504,7 +1528,14 @@ export class TradingOrchestrator {
     for (const pos of db) {
       const row = exchange.find((p) => p.symbol === pos.symbol);
       if (!row || Math.abs(row.positionAmt) < 1e-8) {
-        diffs.push(`DB open ${pos.symbol}, exchange FLAT → RECONCILE close DB`);
+        const line = formatPositionMismatch({
+          userId,
+          symbol: pos.symbol,
+          expected: { status: pos.status, quantity: pos.quantity, entryPrice: pos.entryPrice, side: pos.side },
+          actual: { status: "FLAT", quantity: 0, entryPrice: 0 },
+        });
+        diffs.push(line);
+        logger.warn({ userId, symbol: pos.symbol, expected: pos.status, actual: "FLAT" }, "⚠️ POSITION MISMATCH");
         await this.finalizeClose(pos, pos.currentPrice, 0, "RECONCILE_EXCHANGE_FLAT");
         continue;
       }
@@ -1523,7 +1554,14 @@ export class TradingOrchestrator {
       if (Math.abs(row.positionAmt) < 1e-8) continue;
       const known = db.find((p) => p.symbol === row.symbol);
       if (!known) {
-        diffs.push(`Exchange open ${row.symbol} qty=${row.positionAmt}, missing in DB`);
+        const line = formatPositionMismatch({
+          userId,
+          symbol: row.symbol,
+          expected: { status: "CLOSED", quantity: 0 },
+          actual: { status: "OPEN", quantity: Math.abs(row.positionAmt), entryPrice: row.entryPrice },
+        });
+        diffs.push(line);
+        logger.warn({ userId, symbol: row.symbol, actual: row.positionAmt }, "⚠️ POSITION MISMATCH");
         const recLang = await userLang(userId);
         await notifyEvent(
           userId,

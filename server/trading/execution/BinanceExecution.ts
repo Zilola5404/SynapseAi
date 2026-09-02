@@ -2,6 +2,7 @@ import type { ExecutionFill, ExecutionProvider } from "./ExecutionProvider.js";
 import type { TradingMode } from "../types.js";
 import {
   cancelAllFuturesOrders,
+  cancelFuturesAlgoOrder,
   cancelFuturesOrder,
   commissionForOrder,
   getFuturesAccount,
@@ -313,6 +314,17 @@ export class BinanceExecution implements ExecutionProvider {
       } catch (err) {
         logger.warn({ err, orderId }, "cancel protective failed");
       }
+      try {
+        await cancelFuturesAlgoOrder({
+          apiKey: this.apiKey,
+          apiSecret: this.apiSecret,
+          isTestnet: this.isTestnet,
+          symbol: params.symbol,
+          algoId: orderId,
+        });
+      } catch (err) {
+        logger.warn({ err, orderId }, "cancel protective algo failed");
+      }
     }
   }
 
@@ -335,13 +347,20 @@ export class BinanceExecution implements ExecutionProvider {
   }
 
   async queryOrder(clientOrderId: string, symbol: string): Promise<ExecutionFill | null> {
-    const snap = await queryFuturesOrder({
-      apiKey: this.apiKey,
-      apiSecret: this.apiSecret,
-      isTestnet: this.isTestnet,
-      symbol,
-      origClientOrderId: clientOrderId,
-    });
+    let snap;
+    try {
+      snap = await queryFuturesOrder({
+        apiKey: this.apiKey,
+        apiSecret: this.apiSecret,
+        isTestnet: this.isTestnet,
+        symbol,
+        origClientOrderId: clientOrderId,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/-2013|does not exist|unknown order/i.test(msg)) return null;
+      throw err;
+    }
     if (!snap) return null;
     const fees = snap.orderId
       ? await commissionForOrder({
