@@ -11,6 +11,14 @@ export function price(n: number) {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+export function baseAsset(symbol: string) {
+  return symbol.replace(/USDT|BUSD|USDC/i, "").toUpperCase();
+}
+
+export function qtyLabel(symbol: string, qty: number) {
+  return `${qty} ${baseAsset(symbol)}`;
+}
+
 export function coin(symbol: string) {
   const s = symbol.replace("/", "").toUpperCase();
   if (s.startsWith("BTC")) return `₿ ${s}`;

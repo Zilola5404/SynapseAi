@@ -1,16 +1,19 @@
 import { InlineKeyboard } from "grammy";
-import type { User, RiskSettings, ExchangeCredential } from "@prisma/client";
+import type { User, RiskSettings, ExchangeCredential, ActivePosition } from "@prisma/client";
 import { prisma } from "../db.js";
 import { tradingOrchestrator } from "../trading/orchestrator/TradingOrchestrator.js";
 import { snapshotFor } from "../market/MarketScanner.js";
 import { binanceWsManager } from "../websocket.js";
 import { livePositionStatus } from "../trading/positionState.js";
 import { SCAN_SYMBOLS } from "../trading/types.js";
+import { equityForUser } from "../trading/equity.js";
+import { planPositionSize, type PositionSizeMode } from "../trading/risk/PositionSizer.js";
 import { localeCode, type LocaleCode } from "./locales/index.js";
 import { friendlyError } from "./ui/format.js";
 import { homeScreen, botStartedText, botStoppedText, lockedNeedUnlock } from "./ui/mainMenu.js";
 import { marketOverview, marketCoin, signalsScreen } from "./ui/marketMenu.js";
-import { positionsEmpty, positionCard, positionDetails } from "./ui/positionsMenu.js";
+import { positionsEmpty, positionCard } from "./ui/positionsMenu.js";
+import { sizeSettingsScreen, sizeWhyScreen, sizeModeWarning } from "./ui/sizeMenu.js";
 import { historyList, resultsScreen, statsScreen } from "./ui/historyMenu.js";
 import { riskScreen, riskExplain, riskEdit } from "./ui/riskMenu.js";
 import {
@@ -37,8 +40,56 @@ export type TgUser = User & { riskSettings: RiskSettings | null; credentials: Ex
 
 type Reply = (text: string, extra?: Record<string, unknown>) => Promise<unknown>;
 
+type RiskSizeFields = RiskSettings & {
+  positionSizeMode?: string;
+  maxNotionalUsdt?: number;
+  fixedNotionalUsdt?: number;
+};
+
 function langOf(user: TgUser): LocaleCode {
   return localeCode(user.locale);
+}
+
+function sizeFields(r: RiskSettings | null) {
+  const extra = (r || {}) as RiskSizeFields;
+  return {
+    positionSizeMode: extra.positionSizeMode === "FIXED" || extra.positionSizeMode === "CAPPED" ? extra.positionSizeMode : "AUTO",
+    riskPerTradePct: r?.riskPerTradePct ?? 0.5,
+    maxLeverage: r?.maxLeverage ?? 3,
+    maxPositionSizePct: r?.maxPositionSizePct ?? 10,
+    maxNotionalUsdt: extra.maxNotionalUsdt == null ? 500 : extra.maxNotionalUsdt,
+    fixedNotionalUsdt: extra.fixedNotionalUsdt == null ? 50 : extra.fixedNotionalUsdt,
+  };
+}
+
+function positionView(p: ActivePosition, mark: number) {
+  const diff = p.side === "LONG" ? mark - p.entryPrice : p.entryPrice - mark;
+  const pnl = p.entryPrice ? (diff / p.entryPrice) * p.sizeUsdt : 0;
+  const maxRiskUsdt = p.entryPrice ? (Math.abs(p.entryPrice - p.stopLossPrice) / p.entryPrice) * p.sizeUsdt : 0;
+  return {
+    id: p.id,
+    symbol: p.symbol,
+    side: p.side,
+    entry: p.entryPrice,
+    mark,
+    pnl,
+    sl: p.stopLossPrice,
+    tp: p.takeProfitPrice,
+    sizeUsdt: p.sizeUsdt,
+    marginUsdt: p.marginUsdt,
+    leverage: p.leverage,
+    quantity: p.quantity,
+    maxRiskUsdt,
+  };
+}
+
+async function reloadUser(userId: string) {
+  return prisma.user.findUnique({ where: { id: userId }, include: { riskSettings: true, credentials: true } });
+}
+
+async function showSize(reply: Reply, user: TgUser) {
+  const screen = sizeSettingsScreen(langOf(user), sizeFields(user.riskSettings));
+  await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
 }
 
 async function openCount(userId: string) {
@@ -114,18 +165,7 @@ async function showPositions(reply: Reply, user: TgUser) {
   }
   for (const p of list) {
     const mark = binanceWsManager.getPrice(p.symbol) || p.currentPrice;
-    const diff = p.side === "LONG" ? mark - p.entryPrice : p.entryPrice - mark;
-    const pnl = p.entryPrice ? (diff / p.entryPrice) * p.sizeUsdt : 0;
-    const screen = positionCard(langOf(user), {
-      id: p.id,
-      symbol: p.symbol,
-      side: p.side,
-      entry: p.entryPrice,
-      mark,
-      pnl,
-      sl: p.stopLossPrice,
-      tp: p.takeProfitPrice,
-    });
+    const screen = positionCard(langOf(user), positionView(p, mark));
     await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
   }
 }
@@ -137,18 +177,43 @@ async function showOnePosition(reply: Reply, user: TgUser, id: string) {
     return;
   }
   const mark = binanceWsManager.getPrice(p.symbol) || p.currentPrice;
-  const diff = p.side === "LONG" ? mark - p.entryPrice : p.entryPrice - mark;
-  const pnl = p.entryPrice ? (diff / p.entryPrice) * p.sizeUsdt : 0;
-  const screen = positionCard(langOf(user), {
-    id: p.id,
-    symbol: p.symbol,
-    side: p.side,
+  const screen = positionCard(langOf(user), positionView(p, mark));
+  await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
+}
+
+async function showWhySize(reply: Reply, user: TgUser, positionId: string) {
+  const lang = langOf(user);
+  const p = await prisma.activePosition.findFirst({ where: { id: positionId, userId: user.id } });
+  if (!p) {
+    await showPositions(reply, user);
+    return;
+  }
+  const fields = sizeFields(user.riskSettings);
+  let equity = user.paperBalanceUsdt;
+  if (user.tradingMode === "PAPER") {
+    const open = await prisma.activePosition.findMany({
+      where: { userId: user.id, status: livePositionStatus },
+    });
+    equity += open.reduce((sum, row) => sum + (row.marginUsdt || 0), 0);
+  } else {
+    try {
+      equity = await equityForUser(user);
+    } catch {
+      equity = user.paperBalanceUsdt + p.marginUsdt;
+    }
+  }
+  const planned = planPositionSize({
+    equity,
+    riskPerTradePct: fields.riskPerTradePct,
     entry: p.entryPrice,
-    mark,
-    pnl,
-    sl: p.stopLossPrice,
-    tp: p.takeProfitPrice,
+    stopLoss: p.stopLossPrice,
+    maxLeverage: fields.maxLeverage,
+    maxPositionSizePct: fields.maxPositionSizePct,
+    mode: fields.positionSizeMode as PositionSizeMode,
+    maxNotionalUsdt: fields.maxNotionalUsdt,
+    fixedNotionalUsdt: fields.fixedNotionalUsdt,
   });
+  const screen = sizeWhyScreen(lang, planned, p.sizeUsdt);
   await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
 }
 
@@ -273,10 +338,8 @@ export async function handleAction(
       await showOnePosition(reply, user, action.slice(4));
       return;
     }
-    if (action.startsWith("posd:")) {
-      const p = await prisma.activePosition.findFirst({ where: { id: action.slice(5), userId: user.id } });
-      if (!p) return;
-      await reply(positionDetails(lang, p), { parse_mode: "HTML" });
+    if (action.startsWith("poswhy:")) {
+      await showWhySize(reply, user, action.slice(7));
       return;
     }
     if (action.startsWith("close:")) {
@@ -349,6 +412,55 @@ export async function handleAction(
     if (action === "settings") {
       const screen = settingsScreen(lang);
       await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
+      return;
+    }
+    if (action === "size") {
+      await showSize(reply, user);
+      return;
+    }
+    if (action.startsWith("size_mode:")) {
+      const mode = action.slice(10);
+      if (mode !== "AUTO" && mode !== "CAPPED" && mode !== "FIXED") return;
+      const current = sizeFields(user.riskSettings);
+      await prisma.riskSettings.update({
+        where: { userId: user.id },
+        data: {
+          positionSizeMode: mode,
+          ...(mode === "CAPPED" && current.maxNotionalUsdt <= 0 ? { maxNotionalUsdt: 500 } : {}),
+        },
+      });
+      const warn = sizeModeWarning(lang, mode);
+      if (warn) await reply(warn);
+      const fresh = await reloadUser(user.id);
+      if (fresh) await showSize(reply, fresh);
+      return;
+    }
+    if (action.startsWith("size_cap:")) {
+      const maxNotionalUsdt = Number(action.slice(9));
+      if (!Number.isFinite(maxNotionalUsdt) || maxNotionalUsdt < 0) return;
+      await prisma.riskSettings.update({
+        where: { userId: user.id },
+        data: {
+          maxNotionalUsdt,
+          ...(maxNotionalUsdt > 0 && sizeFields(user.riskSettings).positionSizeMode === "AUTO"
+            ? { positionSizeMode: "CAPPED" }
+            : {}),
+        },
+      });
+      const fresh = await reloadUser(user.id);
+      if (fresh) await showSize(reply, fresh);
+      return;
+    }
+    if (action.startsWith("size_fix:")) {
+      const fixedNotionalUsdt = Number(action.slice(9));
+      if (!Number.isFinite(fixedNotionalUsdt) || fixedNotionalUsdt <= 0) return;
+      await prisma.riskSettings.update({
+        where: { userId: user.id },
+        data: { fixedNotionalUsdt, positionSizeMode: "FIXED" },
+      });
+      await reply(sizeModeWarning(lang, "FIXED"));
+      const fresh = await reloadUser(user.id);
+      if (fresh) await showSize(reply, fresh);
       return;
     }
     if (action === "set_lang") {

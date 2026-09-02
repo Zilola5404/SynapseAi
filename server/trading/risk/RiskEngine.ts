@@ -1,6 +1,14 @@
 import type { RiskSettings, User } from "@prisma/client";
 import type { RiskDecision, StrategySignal } from "../types.js";
-import { sizePosition } from "./PositionSizer.js";
+import { planPositionSize, type PositionSizeMode, type SizeBreakdown } from "./PositionSizer.js";
+
+export type { SizeBreakdown };
+
+function sizeModeOf(risk: RiskSettings): PositionSizeMode {
+  const raw = (risk as RiskSettings & { positionSizeMode?: string }).positionSizeMode;
+  if (raw === "FIXED" || raw === "CAPPED") return raw;
+  return "AUTO";
+}
 
 export function evaluateRisk(params: {
   user: User;
@@ -48,23 +56,21 @@ export function evaluateRisk(params: {
     }
   }
 
-  const sized = sizePosition({
+  const extra = risk as RiskSettings & { positionSizeMode?: string; maxNotionalUsdt?: number; fixedNotionalUsdt?: number };
+  const sized = planPositionSize({
     equity,
     riskPerTradePct: risk.riskPerTradePct,
     entry: signal.entryPrice,
     stopLoss: signal.stopLoss,
     maxLeverage: risk.maxLeverage,
+    maxPositionSizePct: risk.maxPositionSizePct,
+    mode: sizeModeOf(risk),
+    maxNotionalUsdt: extra.maxNotionalUsdt == null ? 500 : extra.maxNotionalUsdt,
+    fixedNotionalUsdt: extra.fixedNotionalUsdt == null ? 50 : extra.fixedNotionalUsdt,
   });
 
   if (sized.quantity <= 0 || sized.marginUsdt < 5) {
     return deny("Размер позиции слишком мал.");
-  }
-
-  const maxMargin = equity * (risk.maxPositionSizePct / 100);
-  if (sized.marginUsdt > maxMargin) {
-    sized.marginUsdt = maxMargin;
-    sized.sizeUsdt = maxMargin * sized.leverage;
-    sized.quantity = sized.sizeUsdt / signal.entryPrice;
   }
 
   const exposurePct = ((openExposureUsdt + sized.sizeUsdt) / equity) * 100;
@@ -79,6 +85,7 @@ export function evaluateRisk(params: {
     sizeUsdt: sized.sizeUsdt,
     marginUsdt: sized.marginUsdt,
     leverage: sized.leverage,
+    explain: sized,
   };
 }
 

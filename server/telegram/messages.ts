@@ -1,9 +1,21 @@
 import type { LocaleCode } from "./locales/index.js";
-import { coin, money, price, sideLabel, closeReasonLabel } from "./ui/format.js";
+import { coin, money, price, qtyLabel, sideLabel, closeReasonLabel } from "./ui/format.js";
 
 export function tradeOpenedMessage(
   lang: LocaleCode,
-  p: { symbol: string; side: string; entry: number; sl: number; tp: number; auto: boolean }
+  p: {
+    symbol: string;
+    side: string;
+    entry: number;
+    sl: number;
+    tp: number;
+    auto: boolean;
+    sizeUsdt?: number;
+    marginUsdt?: number;
+    leverage?: number;
+    quantity?: number;
+    maxRiskUsdt?: number;
+  }
 ) {
   const auto =
     p.auto
@@ -13,9 +25,24 @@ export function tradeOpenedMessage(
       : lang === "en"
         ? "🤖 The trade was opened at your request."
         : "🤖 Сделка открыта по вашей команде.";
+  const dir = p.side === "LONG" || p.side === "BUY"
+    ? lang === "en" ? "BUY" : "ПОКУПКА"
+    : lang === "en" ? "SELL" : "ПРОДАЖА";
+  const sizeBlock =
+    p.sizeUsdt != null
+      ? lang === "en"
+        ? `\n💰 Position size: ${price(p.sizeUsdt)}\n💵 Funds used: ${price(p.marginUsdt || 0)}\n⚡ Leverage: x${p.leverage || 1}\n📦 Quantity: ${qtyLabel(p.symbol, p.quantity || 0)}\n`
+        : `\n💰 Размер сделки: ${price(p.sizeUsdt)}\n💵 Использовано средств: ${price(p.marginUsdt || 0)}\n⚡ Плечо: x${p.leverage || 1}\n📦 Количество: ${qtyLabel(p.symbol, p.quantity || 0)}\n`
+      : "";
+  const riskLine =
+    p.maxRiskUsdt != null
+      ? lang === "en"
+        ? `\n⚠️ Max risk on this trade: ${price(p.maxRiskUsdt)}\n`
+        : `\n⚠️ Максимальный риск по сделке: ${price(p.maxRiskUsdt)}\n`
+      : "";
   return lang === "en"
-    ? `🟢 <b>TRADE OPENED</b>\n\n${coin(p.symbol)}\n\n📈 Direction: ${sideLabel(p.side, lang)}\n\n💰 Entry price:\n${price(p.entry)}\n\n🛡 Risk is limited:\n\n🔴 Stop Loss:\n${price(p.sl)}\n\n🟢 Take Profit:\n${price(p.tp)}\n\n${auto}`
-    : `🟢 <b>СДЕЛКА ОТКРЫТА</b>\n\n${coin(p.symbol)}\n\n📈 Направление: ${sideLabel(p.side, lang)}\n\n💰 Цена открытия:\n${price(p.entry)}\n\n🛡 Риск ограничен:\n\n🔴 Stop Loss:\n${price(p.sl)}\n\n🟢 Take Profit:\n${price(p.tp)}\n\n${auto}`;
+    ? `🟢 <b>TRADE OPENED</b>\n\n${coin(p.symbol)}\n📈 Direction: ${dir}\n${sizeBlock}\n📍 Entry: ${price(p.entry)}\n🔴 Stop Loss: ${price(p.sl)}\n🟢 Take Profit: ${price(p.tp)}\n${riskLine}\n${auto}`
+    : `🟢 <b>СДЕЛКА ОТКРЫТА</b>\n\n${coin(p.symbol)}\n📈 Направление: ${dir}\n${sizeBlock}\n📍 Цена открытия: ${price(p.entry)}\n🛡 Stop Loss: ${price(p.sl)}\n🎯 Take Profit: ${price(p.tp)}\n${riskLine}\n${auto}`;
 }
 
 export function tradeClosedMessage(

@@ -9,11 +9,12 @@ export function settingsScreen(lang: LocaleCode) {
     .text(lang === "en" ? "💰 Trading mode" : "💰 Режим торговли", "mode_menu")
     .row()
     .text(lang === "en" ? "🛡 Risk management" : "🛡 Управление рисками", "risk")
+    .text(lang === "en" ? "💰 Trade size" : "💰 Размер торговли", "size")
+    .row()
     .text(lang === "en" ? "🔔 Notifications" : "🔔 Уведомления", "notify")
-    .row()
     .text(lang === "en" ? "📊 Trading pairs" : "📊 Торговые пары", "pairs")
-    .text(lang === "en" ? "🔐 API connection" : "🔐 API подключение", "keys")
     .row()
+    .text(lang === "en" ? "🔐 API connection" : "🔐 API подключение", "keys")
     .text(lang === "en" ? "🛠 Advanced status" : "🛠 Технический статус", "status_tech");
   navRow(kb.row(), lang);
   return { text, markup: kb };

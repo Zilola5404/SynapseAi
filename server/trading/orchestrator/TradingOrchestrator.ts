@@ -489,6 +489,10 @@ export class TradingOrchestrator {
           sl: signal.stopLoss,
           tp: signal.takeProfit,
           sizeUsdt: risk.sizeUsdt,
+          marginUsdt: risk.marginUsdt,
+          leverage: risk.leverage,
+          quantity: fill.quantity,
+          maxRiskUsdt: risk.explain?.maxLossUsdt,
           fees: fill.feesUsdt,
         },
         "[POSITION] OPENED"
@@ -512,6 +516,11 @@ export class TradingOrchestrator {
           sl: signal.stopLoss,
           tp: signal.takeProfit,
           auto: source === "auto",
+          sizeUsdt: risk.sizeUsdt,
+          marginUsdt: risk.marginUsdt,
+          leverage: risk.leverage,
+          quantity: fill.quantity,
+          maxRiskUsdt: risk.explain?.maxLossUsdt,
         })
       );
       return pos;

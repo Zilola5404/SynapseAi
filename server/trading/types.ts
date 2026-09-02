@@ -30,6 +30,8 @@ export interface StrategySignal {
   strategy: string;
 }
 
+import type { SizeBreakdown } from "./risk/PositionSizer.js";
+
 export interface RiskDecision {
   allowed: boolean;
   reason?: string;
@@ -37,6 +39,7 @@ export interface RiskDecision {
   sizeUsdt: number;
   marginUsdt: number;
   leverage: number;
+  explain?: SizeBreakdown;
 }
 
 export interface OpenPositionInput {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { RiskSettings, User } from "@prisma/client";
-import { sizePosition } from "./risk/PositionSizer.js";
+import { planPositionSize, sizePosition } from "./risk/PositionSizer.js";
 import { evaluateRisk } from "./risk/RiskEngine.js";
 import { applyPaperFill, SLIPPAGE, TAKER_FEE } from "./execution/ExecutionProvider.js";
 import { paperExecution } from "./execution/PaperExecution.js";
@@ -20,6 +20,34 @@ const sized = sizePosition({
 assert.equal(sized.sizeUsdt, 250);
 assert.ok(sized.marginUsdt > 0);
 assert.ok(sized.leverage <= 3);
+
+const capped = planPositionSize({
+  equity: 1000,
+  riskPerTradePct: 0.5,
+  entry: 100,
+  stopLoss: 98,
+  maxLeverage: 3,
+  maxPositionSizePct: 100,
+  mode: "CAPPED",
+  maxNotionalUsdt: 100,
+});
+assert.equal(capped.calculatedSizeUsdt, 250);
+assert.equal(capped.sizeUsdt, 100);
+assert.equal(capped.cappedBy, "max_notional");
+assert.equal(capped.maxLossUsdt, 2);
+
+const fixed = planPositionSize({
+  equity: 1000,
+  riskPerTradePct: 0.5,
+  entry: 100,
+  stopLoss: 98,
+  maxLeverage: 3,
+  maxPositionSizePct: 100,
+  mode: "FIXED",
+  fixedNotionalUsdt: 50,
+});
+assert.equal(fixed.sizeUsdt, 50);
+assert.equal(fixed.cappedBy, "fixed");
 
 const buy = applyPaperFill("BUY", 100, 1);
 assert.equal(buy.status, "FILLED");
@@ -70,6 +98,18 @@ assert.equal(evaluateRisk({
   openExposureUsdt: 0,
   realizedPnl24h: 0,
 }).allowed, true);
+
+const sizedWithCap = evaluateRisk({
+  user,
+  risk,
+  signal,
+  equity: 10000,
+  openCount: 0,
+  openExposureUsdt: 0,
+  realizedPnl24h: 0,
+});
+assert.equal(sizedWithCap.allowed, true);
+assert.ok((sizedWithCap.explain?.sizeUsdt || 0) <= 500);
 
 assert.equal(evaluateRisk({
   user: { ...user, accountLocked: true },
