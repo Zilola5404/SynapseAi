@@ -166,9 +166,9 @@ const bull: MarketSnapshot = {
   volatility: "MEDIUM",
   timeframe: "1H",
 };
-const long = strategyEngine.evaluate(bull, { ...bull, timeframe: "15M" }, { ...bull, timeframe: "5M" });
-assert.ok(long);
-assert.equal(long?.direction, "LONG");
+const long = strategyEngine.technicalFilter(bull, { ...bull, timeframe: "15M" }, { ...bull, timeframe: "5M" });
+assert.ok(long.signal);
+assert.equal(long.signal?.direction, "LONG");
 
 const bear: MarketSnapshot = {
   ...bull,
@@ -180,9 +180,12 @@ const bear: MarketSnapshot = {
   ema200: 110,
   macdSignal: "BEARISH_CROSS",
 };
-const short = strategyEngine.evaluate(bear, { ...bear, timeframe: "15M" }, { ...bear, timeframe: "5M" });
-assert.ok(short);
-assert.equal(short?.direction, "SHORT");
+const short = strategyEngine.technicalFilter(bear, { ...bear, timeframe: "15M" }, { ...bear, timeframe: "5M" });
+assert.ok(short.signal);
+assert.equal(short.signal?.direction, "SHORT");
+
+const intelHold = strategyEngine.evaluate(bull, { ...bull, timeframe: "15M" }, { ...bull, timeframe: "5M" });
+assert.equal(intelHold, null);
 
 assert.equal(
   evaluateRisk({

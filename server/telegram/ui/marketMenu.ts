@@ -20,6 +20,10 @@ export function marketOverview(lang: LocaleCode, rows: MarketRow[]) {
     .text("Ξ ETH", "mkt:ETHUSDT")
     .text("◎ SOL", "mkt:SOLUSDT")
     .row()
+    .text("BNB", "mkt:BNBUSDT")
+    .text("XRP", "mkt:XRPUSDT")
+    .text("ADA", "mkt:ADAUSDT")
+    .row()
     .text(lang === "en" ? "🔄 Refresh" : "🔄 Обновить", "market")
     .text(lang === "en" ? "🔎 Signals" : "🔎 Сигналы", "signals");
   navRow(kb.row(), lang);
@@ -67,8 +71,8 @@ export function signalsScreen(
     : lang === "en" ? "SELL" : "ПРОДАЖА";
   const text =
     lang === "en"
-      ? `🔎 <b>Latest trading signal</b>\n\n${title}\n\n📈 ${coin(signal.symbol)} — ${dir}\n\nSetup quality: ${signal.confidence}/100\n\nℹ️ Not a win probability. A trade opens only after risk checks.`
-      : `🔎 <b>Последний торговый сигнал</b>\n\n${title}\n\n📈 ${coin(signal.symbol)} — ${dir}\n\nКачество сетапа: ${signal.confidence}/100\n\nℹ️ Это не вероятность прибыли. Сделка открывается только после проверки риска.`;
+      ? `🔎 <b>Latest trading signal</b>\n\n${title}\n\n📈 ${coin(signal.symbol)} — ${dir}\n\nConfluence: ${signal.confidence}/15\n\nℹ️ Not a win probability. A trade opens only after risk checks.`
+      : `🔎 <b>Последний торговый сигнал</b>\n\n${title}\n\n📈 ${coin(signal.symbol)} — ${dir}\n\nConfluence: ${signal.confidence}/15\n\nℹ️ Это не вероятность прибыли. Сделка открывается только после проверки риска.`;
   kb.text(lang === "en" ? "▶️ Open trade" : "▶️ Открыть сделку", "open_paper")
     .text(lang === "en" ? "❌ Skip" : "❌ Пропустить", "ignore_signal")
     .row();

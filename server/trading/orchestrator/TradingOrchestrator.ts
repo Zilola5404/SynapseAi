@@ -15,6 +15,8 @@ import { evaluateRisk } from "../risk/RiskEngine.js";
 import { circuitStatus, tripCircuit, resetCircuit } from "../risk/CircuitBreaker.js";
 import { paperExecution } from "../execution/PaperExecution.js";
 import { BinanceExecution } from "../execution/BinanceExecution.js";
+import type { ExecutionProvider } from "../execution/ExecutionProvider.js";
+import { TAKER_FEE } from "../execution/ExecutionProvider.js";
 import { filterSignal } from "../../ai/AIContextFilter.js";
 import { getDecryptedCredentials } from "../../services/credentialService.js";
 import { binanceWsManager } from "../../websocket.js";
@@ -24,7 +26,9 @@ import { withSymbolLock } from "../locks/TradeLock.js";
 import { createTrackedOrder, transitionOrder } from "../execution/orderState.js";
 import { nextTrailingStop } from "../execution/trailing.js";
 import { computeTradePnl, canRunFinalize } from "../pnl.js";
-import { SIGNAL_TTL_MS, buildSignalFactors, potentialMoveUsdt, isSignalExpired, priceMovedTooFar } from "../signalExplain.js";
+import { SIGNAL_TTL_MS, buildSignalFactors, potentialMoveUsdt, isSignalExpired, priceMovedTooFar, encodeConfluencePayload, parseSignalFactors } from "../signalExplain.js";
+import { autoAllowed } from "../intelligence/NoTradeEngine.js";
+import { INTEL } from "../intelligence/config.js";
 import type { StrategySignal, TradingMode } from "../types.js";
 import type { ActivePosition, User } from "@prisma/client";
 
@@ -35,6 +39,17 @@ const LIVE_RISK = {
   maxLeverage: 2,
   maxOpenPositions: 2,
 };
+
+function parseIntelPlan(raw: string | null | undefined) {
+  if (!raw) return null;
+  const i = raw.indexOf("__PLAN__");
+  if (i < 0) return null;
+  try {
+    return JSON.parse(raw.slice(i + 8)) as { tp1?: number; tp2?: number; tp3?: number | null; hits?: number };
+  } catch {
+    return null;
+  }
+}
 
 export async function providerFor(user: User): Promise<ExecutionProvider> {
   const mode = (user.tradingMode as TradingMode) || "PAPER";
@@ -174,7 +189,12 @@ export class TradingOrchestrator {
         results.push({ symbol: row.symbol, action: "HOLD", reason: "NO_MARKET_DATA" });
         continue;
       }
-      const decision = strategyEngine.analyze(row.h1, row.m15, row.m5);
+      const decision = strategyEngine.analyzeBundle({
+        symbol: row.symbol,
+        snapshots: { d1: row.d1, h4: row.h4, h1: row.h1, m15: row.m15, m5: row.m5 },
+        candles: row.candles,
+        btc: { d1: row.btc.d1, h4: row.btc.h4, h1: row.btc.h1 },
+      });
       const signal = decision.signal;
       if (!signal) {
         results.push({
@@ -191,7 +211,7 @@ export class TradingOrchestrator {
           userId,
           symbol: signal.symbol,
           direction: signal.direction,
-          confidence: signal.qualityScore,
+          confidence: signal.confluenceScore ?? signal.qualityScore,
           strategy: signal.strategy,
           status: "NEW",
           entryPrice: signal.entryPrice,
@@ -199,7 +219,7 @@ export class TradingOrchestrator {
           takeProfit: signal.takeProfit,
           reasoning: signal.reasoning,
           riskReward: signal.riskReward,
-          factorsJson: JSON.stringify(signal.scoreLines || []),
+          factorsJson: encodeConfluencePayload(signal),
           expiresAt: new Date(Date.now() + SIGNAL_TTL_MS),
         },
       });
@@ -216,6 +236,10 @@ export class TradingOrchestrator {
       if (!marketDataProvider.isHealthy()) {
         logger.warn({ symbol: signal.symbol }, "[AUTO] Market data DEGRADED — no trade");
         throw new Error("MARKET DATA DEGRADED — no new trades");
+      }
+
+      if (source === "auto" && !autoAllowed(signal.setupGrade || "NO_TRADE")) {
+        throw new Error("AUTO mode opens A+ setups only");
       }
 
       const live = binanceWsManager.getPrice(signal.symbol);
@@ -352,7 +376,14 @@ export class TradingOrchestrator {
           entryOrderId: fill.orderId,
           isPaperTrade: fill.isPaper,
           entryFeeUsdt: fill.feesUsdt,
-          aiRationale: `${signal.reasoning} | ${ai.note}`,
+          aiRationale: `${signal.setupGrade || ""} ${signal.setupType || signal.strategy} ${signal.confluenceScore ?? signal.confidence}/15 | ${ai.note}\n__PLAN__${JSON.stringify({
+            tp1: signal.takeProfit1 || signal.takeProfit,
+            tp2: signal.takeProfit2 || signal.takeProfit,
+            tp3: signal.takeProfit3 || null,
+            hits: 0,
+            grade: signal.setupGrade || "",
+            type: signal.setupType || signal.strategy,
+          })}`,
           aiConfidence: signal.confidence,
           status: "OPEN",
         },
@@ -521,9 +552,38 @@ export class TradingOrchestrator {
         level: "TRADE",
         pair: signal.symbol,
         action: "POSITION_OPEN",
-        details: `${signal.direction} ${signal.symbol} @ ${fill.fillPrice} qty=${fill.quantity} fees=${fill.feesUsdt} SL ${signal.stopLoss} TP ${signal.takeProfit}`,
+        details: `${signal.direction} ${signal.symbol} @ ${fill.fillPrice} qty=${fill.quantity} fees=${fill.feesUsdt} SL ${signal.stopLoss} TP ${signal.takeProfit} grade=${signal.setupGrade || ""} ${signal.confluenceScore ?? signal.confidence}/15`,
         confidence: signal.confidence,
       });
+      const analysis = {
+        userId,
+        positionId: pos.id,
+        signalId: storedSignalId || null,
+        symbol: signal.symbol,
+        direction: signal.direction,
+        marketMode: "",
+        btcTrend: "",
+        marketRegime: "",
+        setupType: signal.setupType || signal.strategy,
+        structure: "",
+        confluenceScore: signal.confluenceScore ?? signal.confidence,
+        grade: signal.setupGrade || "",
+        reasons: JSON.stringify(signal.scoreLines || []),
+        entry: fill.fillPrice,
+        stopLoss: signal.stopLoss,
+        takeProfit: signal.takeProfit,
+        riskReward: signal.riskReward,
+        positionSize: risk.sizeUsdt,
+        result: "OPEN",
+      };
+      const journal = (prisma as { tradeAnalysis?: { create: (args: { data: typeof analysis }) => Promise<unknown> } }).tradeAnalysis;
+      if (journal) {
+        await journal.create({ data: analysis }).catch(() =>
+          writeSystemLog({ userId, level: "TRADE", pair: signal.symbol, action: "TRADE_ANALYSIS", details: JSON.stringify(analysis) })
+        );
+      } else {
+        await writeSystemLog({ userId, level: "TRADE", pair: signal.symbol, action: "TRADE_ANALYSIS", details: JSON.stringify(analysis) });
+      }
       const lang = await userLang(userId);
       await notifyEvent(
         userId,
@@ -562,14 +622,23 @@ export class TradingOrchestrator {
       throw new Error("SIGNAL_EXPIRED");
     }
     await prisma.signal.update({ where: { id: row.id }, data: { status: "ACCEPTED" } });
+    const parsed = parseSignalFactors(row.factorsJson);
+    const grade = parsed.payload?.grade;
     const signal: StrategySignal = {
       symbol: row.symbol,
       direction: row.direction === "SHORT" ? "SHORT" : "LONG",
       confidence: row.confidence,
       qualityScore: row.confidence,
+      confluenceScore: row.confidence,
+      setupGrade: grade === "A+" || grade === "A" || grade === "B" ? grade : undefined,
+      setupType: parsed.payload?.setupType,
       entryPrice: row.entryPrice,
       stopLoss: row.stopLoss,
       takeProfit: row.takeProfit,
+      takeProfit1: parsed.payload?.tp1,
+      takeProfit2: parsed.payload?.tp2,
+      takeProfit3: parsed.payload?.tp3,
+      invalidation: parsed.payload?.invalidation,
       riskReward: row.riskReward || 0,
       reasoning: row.reasoning,
       strategy: row.strategy,
@@ -774,25 +843,26 @@ export class TradingOrchestrator {
     if (pos.isPaperTrade && user) {
       const nextBal = user.paperBalanceUsdt + pos.marginUsdt + pnl;
       const losses = pnl < 0 ? (user.consecutiveLosses || 0) + 1 : 0;
+      const lossLimit = INTEL.consecutiveLossLimit;
       await prisma.user.update({
         where: { id: pos.userId },
         data: {
           paperBalanceUsdt: Number(nextBal.toFixed(2)),
           peakEquityUsdt: Math.max(user.peakEquityUsdt || 0, nextBal),
           consecutiveLosses: losses,
-          pauseUntil: losses >= 3 ? new Date(Date.now() + 60 * 60 * 1000) : null,
-          autoTradeEnabled: losses >= 3 ? false : user.autoTradeEnabled,
-          scannerEnabled: losses >= 3 ? false : user.scannerEnabled,
+          pauseUntil: losses >= lossLimit ? new Date(Date.now() + INTEL.consecutiveLossPauseMs) : null,
+          autoTradeEnabled: losses >= lossLimit ? false : user.autoTradeEnabled,
+          scannerEnabled: losses >= lossLimit ? false : user.scannerEnabled,
         },
       });
-      if (losses >= 3) {
+      if (losses >= lossLimit) {
         const pauseLang = await userLang(pos.userId);
         await notifyEvent(
           pos.userId,
           "risk",
           pauseLang === "en"
-            ? "⚠️ Three losses in a row. Trading is paused for 1 hour."
-            : "⚠️ Три убытка подряд. Торговля на паузе 1 час."
+            ? `⚠️ ${lossLimit} losses in a row. Auto trading is paused for 1 hour.`
+            : `⚠️ ${lossLimit} убытка подряд. Автоторговля на паузе 1 час.`
         );
       }
     }
@@ -866,6 +936,9 @@ export class TradingOrchestrator {
           data: { status: "EXPIRED" },
         });
 
+        const btcSnap = await snapshotFor("BTCUSDT");
+        const confirm = Boolean((user as { confirmBeforeOpen?: boolean }).confirmBeforeOpen);
+
         for (const symbol of SCAN_SYMBOLS) {
           if (allowed && !allowed.has(symbol)) continue;
           logger.info({ symbol }, `[AUTO] ${symbol} scanning`);
@@ -873,20 +946,30 @@ export class TradingOrchestrator {
           logger.info({ symbol, existing }, `[AUTO] Existing position: ${existing ? "YES" : "NO"}`);
           if (existing) continue;
 
-          const snap = await snapshotFor(symbol);
+          const snap = symbol === "BTCUSDT" ? btcSnap : await snapshotFor(symbol);
           logger.info({ symbol, ok: snap.marketDataOk }, `[AUTO] Market data: ${snap.marketDataOk ? "OK" : "UNAVAILABLE"}`);
           if (!snap.marketDataOk || !snap.h1 || !snap.m15 || !snap.m5) {
             logger.info({ symbol }, "[AUTO] SKIP SYMBOL — no market data, no trade");
             continue;
           }
-          const signal = strategyEngine.evaluate(snap.h1, snap.m15, snap.m5);
-          logger.info({ symbol, action: signal?.direction || "NONE" }, `[AUTO] Signal: ${signal?.direction || "NONE"}`);
-          if (signal) candidates.push({ symbol, signal, h1: snap.h1, m5: snap.m5 });
+          const decision = strategyEngine.analyzeBundle({
+            symbol,
+            snapshots: { d1: snap.d1, h4: snap.h4, h1: snap.h1, m15: snap.m15, m5: snap.m5 },
+            candles: snap.candles,
+            btc: { d1: btcSnap.d1, h4: btcSnap.h4, h1: btcSnap.h1 },
+          });
+          const signal = decision.signal;
+          logger.info({ symbol, action: signal?.direction || "NONE", grade: signal?.setupGrade || "NO_TRADE" }, `[AUTO] Signal: ${signal?.direction || "NONE"}`);
+          if (!signal) continue;
+          if (!confirm && !autoAllowed(signal.setupGrade || "NO_TRADE")) {
+            logger.info({ symbol, grade: signal.setupGrade }, "[AUTO] SKIP — not A+ (auto opens A+ only)");
+            continue;
+          }
+          candidates.push({ symbol, signal, h1: snap.h1, m5: snap.m5 });
         }
 
         const best = candidates.sort((a, b) => (b.signal.confidence || 0) - (a.signal.confidence || 0))[0];
         if (best?.signal) {
-          const confirm = Boolean((user as { confirmBeforeOpen?: boolean }).confirmBeforeOpen);
           const equity = await equityForUser(user);
           const openCount = openRows.length;
           const exposure = openRows.reduce((s, p) => s + p.sizeUsdt, 0);
@@ -906,13 +989,12 @@ export class TradingOrchestrator {
                 circuitReason: circuitNow.reason,
               })
             : { allowed: false, sizeUsdt: 0, marginUsdt: 0, leverage: 1, quantity: 0, explain: undefined };
-          const factors =
+          const factorList =
             (best.signal.scoreLines || []).map((l) => ({
               ok: l.ok,
               textRu: `${l.textRu} (${l.points}/${l.max})`,
               textEn: `${l.textEn} (${l.points}/${l.max})`,
             })) || [];
-          const factorList = factors.length ? factors : buildSignalFactors(best.h1, best.m5, best.signal.direction);
           const sizeUsdt = risk.allowed ? risk.sizeUsdt : 0;
           const row = await prisma.signal.create({
             data: {
@@ -927,7 +1009,7 @@ export class TradingOrchestrator {
               takeProfit: best.signal.takeProfit,
               riskReward: best.signal.riskReward,
               reasoning: best.signal.reasoning,
-              factorsJson: JSON.stringify(factorList),
+              factorsJson: encodeConfluencePayload(best.signal),
               sizeUsdt: risk.allowed ? risk.sizeUsdt : null,
               marginUsdt: risk.allowed ? risk.marginUsdt : null,
               leverage: risk.allowed ? risk.leverage : null,
@@ -943,11 +1025,16 @@ export class TradingOrchestrator {
             symbol: best.signal.symbol,
             direction: best.signal.direction,
             confidence: best.signal.confidence,
+            grade: best.signal.setupGrade,
+            setupType: best.signal.setupType,
             entry: best.signal.entryPrice,
             sl: best.signal.stopLoss,
             tp: best.signal.takeProfit,
+            tp1: best.signal.takeProfit1,
+            tp2: best.signal.takeProfit2,
+            tp3: best.signal.takeProfit3,
             riskReward: best.signal.riskReward,
-            factors: factorList,
+            factors: factorList.length ? factorList : buildSignalFactors(best.h1, best.m5, best.signal.direction),
             sizeUsdt: row.sizeUsdt,
             marginUsdt: row.marginUsdt,
             leverage: row.leverage,
@@ -1016,9 +1103,29 @@ export class TradingOrchestrator {
       const isLong = pos.side === "LONG";
       let reason: string | null = null;
       if (isLong && price <= sl) reason = "STOP_LOSS";
-      if (isLong && price >= pos.takeProfitPrice) reason = "TAKE_PROFIT";
       if (!isLong && price >= sl) reason = "STOP_LOSS";
-      if (!isLong && price <= pos.takeProfitPrice) reason = "TAKE_PROFIT";
+      const plan = parseIntelPlan(pos.aiRationale);
+      const targets = plan
+        ? [plan.tp1, plan.tp2, plan.tp3].filter((t): t is number => typeof t === "number" && t > 0)
+        : [];
+      const hits = plan?.hits || 0;
+      if (!reason && targets.length) {
+        const next = targets[Math.min(hits, targets.length - 1)];
+        const hitTp = isLong ? price >= next : price <= next;
+        if (hitTp) {
+          const last = hits >= targets.length - 1;
+          if (last) reason = "TAKE_PROFIT";
+          else {
+            await this.scaleOutPaper(pos, INTEL.scaleOut[hits] || 0.33, `TP${hits + 1}`, price).catch((err) =>
+              logger.warn({ err }, "paper scale-out")
+            );
+            continue;
+          }
+        }
+      } else {
+        if (isLong && price >= pos.takeProfitPrice) reason = "TAKE_PROFIT";
+        if (!isLong && price <= pos.takeProfitPrice) reason = "TAKE_PROFIT";
+      }
       if (reason) {
         await this.closePosition(pos.userId, pos.id, reason).catch((err) => logger.warn({ err }, "paper sl/tp"));
       } else if (sl !== pos.stopLossPrice) {
@@ -1027,6 +1134,75 @@ export class TradingOrchestrator {
         await prisma.activePosition.update({ where: { id: pos.id }, data: { currentPrice: price } });
       }
     }
+  }
+
+  async scaleOutPaper(pos: ActivePosition, fraction: number, reason: string, markPrice: number) {
+    const qty = Number((pos.quantity * fraction).toFixed(6));
+    if (qty <= 0 || qty >= pos.quantity) {
+      await this.closePosition(pos.userId, pos.id, reason);
+      return;
+    }
+    const fill = await paperExecution.closeMarket({
+      symbol: pos.symbol,
+      side: pos.side === "LONG" ? "SELL" : "BUY",
+      quantity: qty,
+      markPrice,
+      clientOrderId: `SCALE${pos.id.slice(-8)}${Date.now().toString(36)}`.slice(0, 36),
+      reduceOnly: true,
+    });
+    const exitFee = fill.feesUsdt || qty * fill.fillPrice * TAKER_FEE;
+    const entryFeeShare = (pos.entryFeeUsdt || 0) * (qty / pos.quantity);
+    const priced = computeTradePnl({
+      side: pos.side,
+      entryPrice: pos.entryPrice,
+      exitPrice: fill.fillPrice,
+      quantity: qty,
+      entryFeeUsdt: entryFeeShare,
+      exitFeeUsdt: exitFee,
+    });
+    const remainQty = pos.quantity - qty;
+    const remainSize = remainQty * pos.entryPrice;
+    const remainMargin = pos.marginUsdt * (remainQty / pos.quantity);
+    const plan = parseIntelPlan(pos.aiRationale) || { hits: 0, tp1: pos.takeProfitPrice, tp2: pos.takeProfitPrice, tp3: null };
+    plan.hits = (plan.hits || 0) + 1;
+    const nextTp = [plan.tp2, plan.tp3][plan.hits - 1] || pos.takeProfitPrice;
+    const marker = pos.aiRationale?.includes("__PLAN__")
+      ? pos.aiRationale.replace(/__PLAN__.*/, `__PLAN__${JSON.stringify(plan)}`)
+      : `${pos.aiRationale || ""}\n__PLAN__${JSON.stringify(plan)}`;
+    await prisma.activePosition.update({
+      where: { id: pos.id },
+      data: {
+        quantity: remainQty,
+        sizeUsdt: remainSize,
+        marginUsdt: remainMargin,
+        takeProfitPrice: nextTp,
+        currentPrice: markPrice,
+        entryFeeUsdt: Math.max(0, (pos.entryFeeUsdt || 0) - entryFeeShare),
+        aiRationale: marker,
+      },
+    });
+    const user = await prisma.user.findUnique({ where: { id: pos.userId } });
+    if (user) {
+      await prisma.user.update({
+        where: { id: pos.userId },
+        data: { paperBalanceUsdt: Number((user.paperBalanceUsdt + priced.netPnl + (pos.marginUsdt - remainMargin)).toFixed(2)) },
+      });
+    }
+    await writeSystemLog({
+      userId: pos.userId,
+      level: "TRADE",
+      pair: pos.symbol,
+      action: "SCALE_OUT",
+      details: `${reason} qty=${qty} exit=${fill.fillPrice} net=${priced.netPnl.toFixed(2)} remain=${remainQty}`,
+    });
+    const lang = await userLang(pos.userId);
+    await notifyEvent(
+      pos.userId,
+      "trade_close",
+      lang === "en"
+        ? `🎯 Partial close (${reason})\n${pos.symbol}\nClosed ${qty} of the position.\nNet: ${priced.netPnl.toFixed(2)} USDT`
+        : `🎯 Частичное закрытие (${reason})\n${pos.symbol}\nЗакрыто ${qty} от позиции.\nЧистый результат: ${priced.netPnl.toFixed(2)} USDT`
+    );
   }
 
   async retryClose(pos: ActivePosition) {

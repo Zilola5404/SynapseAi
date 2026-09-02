@@ -8,7 +8,7 @@ import { livePositionStatus } from "../trading/positionState.js";
 import { SCAN_SYMBOLS } from "../trading/types.js";
 import { equityForUser } from "../trading/equity.js";
 import { planPositionSize, type PositionSizeMode } from "../trading/risk/PositionSizer.js";
-import { isSignalExpired, type SignalFactor } from "../trading/signalExplain.js";
+import { isSignalExpired, parseSignalFactors, type SignalFactor } from "../trading/signalExplain.js";
 import { localeCode, type LocaleCode } from "./locales/index.js";
 import { friendlyError } from "./ui/format.js";
 import { homeScreen, botStartedText, botStoppedText, lockedNeedUnlock } from "./ui/mainMenu.js";
@@ -207,17 +207,20 @@ function viewFromSignalRow(row: {
   status: string;
 }) {
   let factors: SignalFactor[] = [];
+  let grade: string | undefined;
+  let setupType: string | undefined;
+  let tp1: number | undefined;
+  let tp2: number | undefined;
+  let tp3: number | null | undefined;
   try {
-    const parsed = row.factorsJson ? JSON.parse(row.factorsJson) : [];
-    if (Array.isArray(parsed)) {
-      factors = parsed.map((item: { ok?: boolean; textRu?: string; textEn?: string; points?: number; max?: number }) => {
-        const extra = item.points != null && item.max != null ? ` (${item.points}/${item.max})` : "";
-        return {
-          ok: Boolean(item.ok),
-          textRu: `${item.textRu || ""}${extra}`,
-          textEn: `${item.textEn || ""}${extra}`,
-        };
-      });
+    const parsed = parseSignalFactors(row.factorsJson);
+    factors = parsed.factors;
+    if (parsed.payload) {
+      grade = parsed.payload.grade;
+      setupType = parsed.payload.setupType;
+      tp1 = parsed.payload.tp1;
+      tp2 = parsed.payload.tp2;
+      tp3 = parsed.payload.tp3;
     }
   } catch {
     factors = [];
@@ -227,9 +230,14 @@ function viewFromSignalRow(row: {
     symbol: row.symbol,
     direction: row.direction,
     confidence: row.confidence,
+    grade,
+    setupType,
     entry: row.entryPrice || 0,
     sl: row.stopLoss || 0,
     tp: row.takeProfit || 0,
+    tp1,
+    tp2,
+    tp3,
     riskReward: row.riskReward || 0,
     factors,
     sizeUsdt: row.sizeUsdt,

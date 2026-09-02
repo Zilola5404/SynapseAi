@@ -26,10 +26,10 @@ export function homeScreen(params: {
 }
 
 export function botStartedText(lang: LocaleCode, mode: string) {
-  const pairs = "• BTC\n• ETH\n• SOL";
+  const pairs = "• BTC\n• ETH\n• SOL\n• BNB\n• XRP\n• ADA";
   return lang === "en"
-    ? `🤖 <b>Auto trading is on</b>\n\nI am starting to analyse the market:\n\n${pairs}\n\nIf a suitable opportunity appears, I will check the risk before opening a trade.\n\n🛡 Every trade goes through Risk Management.\n\nStatus:\n🟢 Auto trading enabled\n\nMode: ${modeLabel(mode, lang)}`
-    : `🤖 <b>Автоторговля запущена</b>\n\nЯ начинаю анализировать рынок:\n\n${pairs}\n\nЕсли появится подходящая торговая возможность,\nя проведу проверку риска перед открытием сделки.\n\n🛡 Все сделки проходят Risk Management.\n\nСтатус:\n🟢 Автоторговля включена`;
+    ? `🤖 <b>SynapseAI is running.</b>\n\n🧠 Analysing the market.\n📊 Checking BTC.\n📈 Looking for quality setups.\n🛡 Checking risk.\n\nUniverse:\n${pairs}\n\nIf the market is poor, I will not open a trade.\nAuto mode opens A+ setups only.\n\nStatus:\n🟢 Auto trading enabled\n\nMode: ${modeLabel(mode, lang)}`
+    : `🤖 <b>SynapseAI запущен.</b>\n\n🧠 Анализирую рынок.\n📊 Проверяю BTC.\n📈 Ищу качественные сетапы.\n🛡 Проверяю риски.\n\nВселенная:\n${pairs}\n\nЕсли рынок плохой, сделку не открою.\nВ авторежиме открываются только сетапы A+.\n\nСтатус:\n🟢 Автоторговля включена\n\nРежим: ${modeLabel(mode, lang)}`;
 }
 
 export function botStoppedText(lang: LocaleCode) {

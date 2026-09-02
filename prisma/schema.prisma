@@ -25,7 +25,7 @@ model User {
 
   // strategy / agent settings (часть профиля пользователя по ТЗ)
   strategyMode            String  @default("BALANCED")
-  tradingPairs            String[] @default(["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+  tradingPairs            String[] @default(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT"])
   aiConfidenceThreshold   Int     @default(75)
   scanIntervalSeconds     Int     @default(10)
   technicalWeight         Int     @default(50)
@@ -56,6 +56,7 @@ model User {
   signals                 Signal[]
   exchangeOrders          ExchangeOrder[]
   circuitBreaker          CircuitBreakerState?
+  tradeAnalyses           TradeAnalysis[]
 
   @@map("users")
 }
@@ -277,4 +278,36 @@ model Signal {
 
   @@index([userId, createdAt])
   @@map("signals")
+}
+
+model TradeAnalysis {
+  id              String   @id @default(cuid())
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  positionId      String?
+  signalId        String?
+  symbol          String
+  direction       String
+  marketMode      String   @default("")
+  btcTrend        String   @default("")
+  marketRegime    String   @default("")
+  setupType       String   @default("")
+  structure       String   @default("")
+  confluenceScore Int      @default(0)
+  grade           String   @default("")
+  reasons         String   @default("[]")
+  entry           Float    @default(0)
+  stopLoss        Float    @default(0)
+  takeProfit      Float    @default(0)
+  riskReward      Float    @default(0)
+  positionSize    Float    @default(0)
+  exitPrice       Float?
+  pnl             Float?
+  fees            Float?
+  result          String   @default("OPEN")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@map("trade_analysis")
 }

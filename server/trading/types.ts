@@ -1,4 +1,6 @@
-export const SCAN_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"] as const;
+import { SCAN_UNIVERSE } from "./intelligence/config.js";
+
+export const SCAN_SYMBOLS = SCAN_UNIVERSE;
 export type ScanSymbol = (typeof SCAN_SYMBOLS)[number];
 export type TradeSide = "LONG" | "SHORT";
 export type TradingMode = "PAPER" | "TESTNET" | "LIVE";
@@ -39,12 +41,19 @@ export type ScoreLine = {
 export interface StrategySignal {
   symbol: string;
   direction: TradeSide;
-  /** Setup quality 0–100. Not a win-rate or profit probability. */
+  /** Confluence 0–15 stored here for DB compat. Not a win probability. */
   confidence: number;
   qualityScore: number;
+  confluenceScore?: number;
+  setupGrade?: "A+" | "A" | "B";
+  setupType?: string;
   entryPrice: number;
   stopLoss: number;
   takeProfit: number;
+  takeProfit1?: number;
+  takeProfit2?: number;
+  takeProfit3?: number | null;
+  invalidation?: string;
   riskReward: number;
   reasoning: string;
   strategy: string;

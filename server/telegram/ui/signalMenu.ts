@@ -4,7 +4,7 @@ import { coin, money, price, qtyLabel, sideLabel } from "./format.js";
 import { navRow } from "./keyboards.js";
 import {
   isSignalExpired,
-  signalStrengthLabel,
+  setupGradeLabel,
   type SignalFactor,
 } from "../../trading/signalExplain.js";
 
@@ -13,9 +13,14 @@ export type SignalView = {
   symbol: string;
   direction: string;
   confidence: number;
+  grade?: string;
+  setupType?: string;
   entry: number;
   sl: number;
   tp: number;
+  tp1?: number | null;
+  tp2?: number | null;
+  tp3?: number | null;
   riskReward: number;
   factors: SignalFactor[];
   sizeUsdt?: number | null;
@@ -65,21 +70,28 @@ export function signalOfferText(lang: LocaleCode, s: SignalView, mode: "auto" | 
         ? `\n🛑 Potential risk: ${money(-Math.abs(s.maxRiskUsdt))}\n🎯 Potential profit: ${money(Math.abs(s.potentialProfitUsdt || 0))}\n📊 Risk/Reward: 1 : ${s.riskReward.toFixed(1)}`
         : `\n🛑 Потенциальный риск: ${money(-Math.abs(s.maxRiskUsdt))}\n🎯 Потенциальная прибыль: ${money(Math.abs(s.potentialProfitUsdt || 0))}\n📊 Соотношение риск/прибыль: 1 : ${s.riskReward.toFixed(1)}`
       : `\n📊 Risk/Reward: 1 : ${s.riskReward.toFixed(1)}`;
+  const grade = s.grade || (s.confidence >= 13 ? "A+" : s.confidence >= 10 ? "A" : "");
+  const gradeLine = setupGradeLabel(grade, lang === "en" ? "en" : "ru");
+  const scoreMax = s.confidence <= 15 ? 15 : 100;
+  const tpBlock =
+    lang === "en"
+      ? `\n📍 Suggested entry: ${price(s.entry)}\n🛑 Stop Loss: ${price(s.sl)}\n🎯 TP1: ${price(s.tp1 || s.tp)}\n🎯 TP2: ${price(s.tp2 || s.tp)}${s.tp3 ? `\n🎯 TP3: ${price(s.tp3)}` : ""}`
+      : `\n📍 Вход: ${price(s.entry)}\n🛑 Stop Loss: ${price(s.sl)}\n🎯 TP1: ${price(s.tp1 || s.tp)}\n🎯 TP2: ${price(s.tp2 || s.tp)}${s.tp3 ? `\n🎯 TP3: ${price(s.tp3)}` : ""}`;
   const autoNote =
     mode === "auto"
       ? lang === "en"
-        ? "\n\n🤖 Auto mode: the bot can open this trade after a risk check."
-        : "\n\n🤖 Авторежим: бот может открыть сделку после проверки риска."
+        ? "\n\n🤖 Auto mode: only A+ setups can be opened automatically after a risk check."
+        : "\n\n🤖 Авторежим: система открывает только сетапы A+ после проверки риска."
       : lang === "en"
-        ? "\n\n⚠️ The decision is yours. Trading involves risk.\nThis is not a promise of profit."
-        : "\n\n⚠️ Решение остаётся за вами. Торговля связана с риском.\nЭто не обещание прибыли.";
+        ? "\n\n⚠️ This is a trade scenario, not a profit guarantee."
+        : "\n\n⚠️ Это торговый сценарий, а не гарантия прибыли.";
   const why =
     lang === "en"
-      ? `\n💡 Why this signal:\n${factorLines(s.factors, lang)}`
-      : `\n💡 Почему появился сигнал:\n${factorLines(s.factors, lang)}`;
+      ? `\n🧠 Why:\n${factorLines(s.factors, lang)}`
+      : `\n🧠 Почему:\n${factorLines(s.factors, lang)}`;
   return lang === "en"
-    ? `🔎 <b>SYNAPSEAI FOUND A SETUP</b>\n\n${coin(s.symbol)}\n📈 Direction: ${dir}\n\n⭐ Setup quality: ${s.confidence} / 100\n${signalStrengthLabel(s.confidence, "en")}\nℹ️ This is how well the market matches the strategy rules. It is not a win probability and not a profit guarantee.\n\n${why}\n\n📍 Suggested entry: ${price(s.entry)}\n🛑 Stop Loss: ${price(s.sl)}\n🎯 Take Profit: ${price(s.tp)}${size}${riskBlock}\n\n${ttlLine}${autoNote}`
-    : `🔎 <b>SYNAPSEAI НАШЁЛ СЕТАП</b>\n\n${coin(s.symbol)}\n📈 Направление: ${dir}\n\n⭐ Качество сетапа: ${s.confidence} / 100\n${signalStrengthLabel(s.confidence, "ru")}\nℹ️ Это оценка соответствия условиям стратегии, а не вероятность прибыли и не гарантия заработка.\n\n${why}\n\n📍 Предлагаемая цена входа: ${price(s.entry)}\n🛑 Stop Loss: ${price(s.sl)}\n🎯 Take Profit: ${price(s.tp)}${size}${riskBlock}\n\n${ttlLine}${autoNote}`;
+    ? `🔎 <b>SYNAPSEAI FOUND A SETUP</b>\n\n${coin(s.symbol)}\n📈 Direction: ${dir}\n\n⭐ Setup quality:\n${gradeLine}\n${s.confidence} / ${scoreMax}\nℹ️ Confluence score, not a win probability.\n\n${why}\n\n💰 Trade plan:${tpBlock}${size}${riskBlock}\n\n${ttlLine}${autoNote}`
+    : `🔎 <b>SYNAPSEAI НАШЁЛ СЕТАП</b>\n\n${coin(s.symbol)}\n📈 Направление: ${dir}\n\n⭐ Качество сетапа:\n${gradeLine}\n${s.confidence} / ${scoreMax}\nℹ️ Это оценка confluence, а не вероятность прибыли.\n\n${why}\n\n💰 План сделки:${tpBlock}${size}${riskBlock}\n\n${ttlLine}${autoNote}`;
 }
 
 export function signalOfferKeyboard(lang: LocaleCode, id: string, expired: boolean) {
@@ -97,10 +109,9 @@ export function signalOfferKeyboard(lang: LocaleCode, id: string, expired: boole
 }
 
 export function signalDetailsText(lang: LocaleCode, s: SignalView) {
-  const okCount = s.factors.filter((f) => f.ok).length;
   return lang === "en"
-    ? `📊 <b>DETAILED ANALYSIS</b>\n\n${coin(s.symbol)}\n\n📈 Direction: ${sideLabel(s.direction, lang)}\n⭐ Setup quality: ${s.confidence} / 100\n\n${factorLines(s.factors, lang)}\n\n🧠 Summary: ${okCount} of ${Math.max(s.factors.length, 1)} scored factors look acceptable.\n\n🛡 Risk check: size is calculated from balance, risk % and Stop Loss.\n💰 Position size: ${s.sizeUsdt != null ? price(s.sizeUsdt) : "—"}\n⚡ Leverage: x${s.leverage || 1}\n💵 Margin: ${s.marginUsdt != null ? price(s.marginUsdt) : "—"}\n\n🛑 Stop Loss: ${price(s.sl)}\n🎯 Take Profit: ${price(s.tp)}\n📊 Risk/Reward: 1:${s.riskReward.toFixed(1)}`
-    : `📊 <b>ПОДРОБНЫЙ АНАЛИЗ</b>\n\n${coin(s.symbol)}\n\n📈 Направление: ${sideLabel(s.direction, lang)}\n⭐ Качество сетапа: ${s.confidence} / 100\n\n${factorLines(s.factors, lang)}\n\n🧠 Итог: ${okCount} из ${Math.max(s.factors.length, 1)} пунктов оценки выглядят приемлемо.\n\n🛡 Проверка риска: размер считается из баланса, процента риска и Stop Loss.\n💰 Размер позиции: ${s.sizeUsdt != null ? price(s.sizeUsdt) : "—"}\n⚡ Плечо: x${s.leverage || 1}\n💵 Маржа: ${s.marginUsdt != null ? price(s.marginUsdt) : "—"}\n\n🛑 Stop Loss: ${price(s.sl)}\n🎯 Take Profit: ${price(s.tp)}\n📊 Risk/Reward: 1:${s.riskReward.toFixed(1)}`;
+    ? `📊 <b>DETAILED ANALYSIS</b>\n\n${coin(s.symbol)}\n\n📈 Direction: ${sideLabel(s.direction, lang)}\n⭐ ${setupGradeLabel(s.grade, "en")}\n${s.confidence} / ${s.confidence <= 15 ? 15 : 100}\n\n${factorLines(s.factors, lang)}\n\n🛡 Size is calculated from balance, risk % and Stop Loss.\n💰 Position size: ${s.sizeUsdt != null ? price(s.sizeUsdt) : "—"}\n⚡ Leverage: x${s.leverage || 1}\n💵 Margin: ${s.marginUsdt != null ? price(s.marginUsdt) : "—"}\n\n🛑 Stop Loss: ${price(s.sl)}\n🎯 TP1: ${price(s.tp1 || s.tp)}\n🎯 TP2: ${price(s.tp2 || s.tp)}\n📊 Risk/Reward: 1:${s.riskReward.toFixed(1)}`
+    : `📊 <b>ПОДРОБНЫЙ АНАЛИЗ</b>\n\n${coin(s.symbol)}\n\n📈 Направление: ${sideLabel(s.direction, lang)}\n⭐ ${setupGradeLabel(s.grade, "ru")}\n${s.confidence} / ${s.confidence <= 15 ? 15 : 100}\n\n${factorLines(s.factors, lang)}\n\n🛡 Размер считается из баланса, процента риска и Stop Loss.\n💰 Размер позиции: ${s.sizeUsdt != null ? price(s.sizeUsdt) : "—"}\n⚡ Плечо: x${s.leverage || 1}\n💵 Маржа: ${s.marginUsdt != null ? price(s.marginUsdt) : "—"}\n\n🛑 Stop Loss: ${price(s.sl)}\n🎯 TP1: ${price(s.tp1 || s.tp)}\n🎯 TP2: ${price(s.tp2 || s.tp)}\n📊 Risk/Reward: 1:${s.riskReward.toFixed(1)}`;
 }
 
 export function signalHistoryScreen(
@@ -141,7 +152,7 @@ export function signalHistoryScreen(
     const mark = r.status === "TRADE_OPENED" ? "🟢" : r.status === "REJECTED" ? "🟡" : r.status === "EXPIRED" ? "🔴" : "📡";
     const st = lang === "en" ? statusEn[r.status] || r.status : statusRu[r.status] || r.status;
     const dir = r.direction === "LONG" ? (lang === "en" ? "BUY" : "ПОКУПКА") : lang === "en" ? "SELL" : "ПРОДАЖА";
-    return `${mark} ${r.symbol} ${dir}\n${lang === "en" ? "Setup quality" : "Качество сетапа"}: ${r.confidence}/100\n${lang === "en" ? "Status" : "Статус"}: ${st}`;
+    return `${mark} ${r.symbol} ${dir}\n${lang === "en" ? "Confluence" : "Confluence"}: ${r.confidence}/15\n${lang === "en" ? "Status" : "Статус"}: ${st}`;
   });
   const kb = new InlineKeyboard().text(lang === "en" ? "🔎 Latest signal" : "🔎 Последний сигнал", "signals");
   navRow(kb.row(), lang);
@@ -157,12 +168,12 @@ export function noTradeText(lang: LocaleCode, vetoes: { textRu: string; textEn: 
   const scoreLine =
     typeof score === "number" && score > 0
       ? lang === "en"
-        ? `\n⭐ Last setup quality: ${score} / 100\n`
-        : `\n⭐ Последняя оценка сетапа: ${score} / 100\n`
+        ? `\n⭐ Last confluence: ${score} / 15\n`
+        : `\n⭐ Последний confluence: ${score} / 15\n`
       : "";
   return lang === "en"
-    ? `🛑 <b>NO TRADE</b>\n\nSynapseAI checked the market.${scoreLine}\n${reasons}\n\n🤖 Decision: do not open a trade.\nI keep watching the market.\n\nThis is more valuable than forcing a weak signal.`
-    : `🛑 <b>СДЕЛКА НЕ РЕКОМЕНДУЕТСЯ</b>\n\nSynapseAI проверил рынок.${scoreLine}\n${reasons}\n\n🤖 Решение: НЕ ОТКРЫВАТЬ СДЕЛКУ.\nЯ продолжаю наблюдать за рынком.\n\nЭто ценнее, чем открывать слабый сигнал.`;
+    ? `⏸ <b>NO TRADE RIGHT NOW</b>\n\nSynapseAI checked the market.${scoreLine}\n${reasons}\n\n🤖 Decision: do not open a trade.\nI keep watching the market.`
+    : `⏸ <b>СЕЙЧАС СДЕЛКУ НЕ ОТКРЫВАЕМ</b>\n\nSynapseAI проверил рынок.${scoreLine}\n${reasons}\n\n🤖 Решение: не открывать сделку.\nПродолжаю анализировать рынок.`;
 }
 
 export function signalExpiredText(lang: LocaleCode) {

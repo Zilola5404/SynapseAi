@@ -7,10 +7,102 @@ export type SignalFactor = { ok: boolean; textRu: string; textEn: string };
 export type SignalStrength = "weak" | "medium" | "strong" | "very_strong";
 
 export function signalStrength(score: number): SignalStrength {
+  if (score <= 15) {
+    if (score >= 13) return "very_strong";
+    if (score >= 10) return "strong";
+    if (score >= 7) return "medium";
+    return "weak";
+  }
   if (score >= 85) return "very_strong";
   if (score >= 70) return "strong";
   if (score >= 50) return "medium";
   return "weak";
+}
+
+export function setupGradeLabel(grade: string | undefined, lang: "ru" | "en") {
+  if (grade === "A+") return lang === "en" ? "🟢 A+ SETUP" : "🟢 A+ СЕТАП";
+  if (grade === "A") return lang === "en" ? "🟢 A SETUP" : "🟢 A СЕТАП";
+  if (grade === "B") return lang === "en" ? "🟡 B SETUP" : "🟡 B СЕТАП";
+  return lang === "en" ? "🔴 NO TRADE" : "🔴 СДЕЛКА НЕ РЕКОМЕНДУЕТСЯ";
+}
+
+export type ConfluencePayload = {
+  version: 2;
+  confluence: number;
+  max: number;
+  grade: string;
+  setupType?: string;
+  tp1?: number;
+  tp2?: number;
+  tp3?: number | null;
+  invalidation?: string;
+  lines: Array<{ ok?: boolean; textRu?: string; textEn?: string; points?: number; max?: number }>;
+};
+
+export function encodeConfluencePayload(signal: {
+  confluenceScore?: number;
+  qualityScore?: number;
+  confidence: number;
+  setupGrade?: string;
+  setupType?: string;
+  takeProfit1?: number;
+  takeProfit2?: number;
+  takeProfit3?: number | null;
+  invalidation?: string;
+  scoreLines?: Array<{ ok: boolean; textRu: string; textEn: string; points: number; max: number }>;
+}): string {
+  const payload: ConfluencePayload = {
+    version: 2,
+    confluence: signal.confluenceScore ?? signal.qualityScore ?? signal.confidence,
+    max: 15,
+    grade: signal.setupGrade || "",
+    setupType: signal.setupType,
+    tp1: signal.takeProfit1,
+    tp2: signal.takeProfit2,
+    tp3: signal.takeProfit3,
+    invalidation: signal.invalidation,
+    lines: signal.scoreLines || [],
+  };
+  return JSON.stringify(payload);
+}
+
+export function parseSignalFactors(raw: string | null | undefined): {
+  factors: SignalFactor[];
+  payload: ConfluencePayload | null;
+} {
+  try {
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.version === 2) {
+      const lines = Array.isArray(parsed.lines) ? parsed.lines : [];
+      return {
+        payload: parsed as ConfluencePayload,
+        factors: lines.map((item: { ok?: boolean; textRu?: string; textEn?: string; points?: number; max?: number }) => {
+          const extra = item.points != null && item.max != null ? ` (${item.points}/${item.max})` : "";
+          return {
+            ok: Boolean(item.ok),
+            textRu: `${item.textRu || ""}${extra}`,
+            textEn: `${item.textEn || ""}${extra}`,
+          };
+        }),
+      };
+    }
+    if (Array.isArray(parsed)) {
+      return {
+        payload: null,
+        factors: parsed.map((item: { ok?: boolean; textRu?: string; textEn?: string; points?: number; max?: number }) => {
+          const extra = item.points != null && item.max != null ? ` (${item.points}/${item.max})` : "";
+          return {
+            ok: Boolean(item.ok),
+            textRu: `${item.textRu || ""}${extra}`,
+            textEn: `${item.textEn || ""}${extra}`,
+          };
+        }),
+      };
+    }
+  } catch {
+    return { factors: [], payload: null };
+  }
+  return { factors: [], payload: null };
 }
 
 export function signalStrengthLabel(score: number, lang: "ru" | "en") {
