@@ -87,6 +87,7 @@ const signal: StrategySignal = {
   riskReward: 3.5,
   reasoning: "test",
   strategy: "TREND_MOMENTUM",
+  qualityScore: 80,
 };
 
 assert.equal(evaluateRisk({

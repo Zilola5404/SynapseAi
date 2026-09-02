@@ -67,8 +67,8 @@ export function signalsScreen(
     : lang === "en" ? "SELL" : "ПРОДАЖА";
   const text =
     lang === "en"
-      ? `🔎 <b>Latest trading signal</b>\n\n${title}\n\n📈 ${coin(signal.symbol)} — ${dir}\n\nSystem confidence: ${signal.confidence}%\n\n📊 Analysis:\n• Trend: ${buy ? "up" : "down"}\n• Technicals: positive\n• Risk: within limits\n\n🟢 The system considers conditions suitable for a trade.`
-      : `🔎 <b>Последний торговый сигнал</b>\n\n${title}\n\n📈 ${coin(signal.symbol)} — ${dir}\n\nУверенность анализа: ${signal.confidence}%\n\n📊 Анализ:\n• Тренд: ${buy ? "восходящий" : "нисходящий"}\n• Технические показатели: положительные\n• Риск: допустимый\n\n🟢 Система считает условия достаточно\nподходящими для сделки.`;
+      ? `🔎 <b>Latest trading signal</b>\n\n${title}\n\n📈 ${coin(signal.symbol)} — ${dir}\n\nSetup quality: ${signal.confidence}/100\n\nℹ️ Not a win probability. A trade opens only after risk checks.`
+      : `🔎 <b>Последний торговый сигнал</b>\n\n${title}\n\n📈 ${coin(signal.symbol)} — ${dir}\n\nКачество сетапа: ${signal.confidence}/100\n\nℹ️ Это не вероятность прибыли. Сделка открывается только после проверки риска.`;
   kb.text(lang === "en" ? "▶️ Open trade" : "▶️ Открыть сделку", "open_paper")
     .text(lang === "en" ? "❌ Skip" : "❌ Пропустить", "ignore_signal")
     .row();

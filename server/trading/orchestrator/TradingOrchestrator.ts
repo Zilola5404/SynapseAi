@@ -174,9 +174,16 @@ export class TradingOrchestrator {
         results.push({ symbol: row.symbol, action: "HOLD", reason: "NO_MARKET_DATA" });
         continue;
       }
-      const signal = strategyEngine.evaluate(row.h1, row.m15, row.m5);
+      const decision = strategyEngine.analyze(row.h1, row.m15, row.m5);
+      const signal = decision.signal;
       if (!signal) {
-        results.push({ symbol: row.symbol, action: "HOLD", snapshot: row.m5 });
+        results.push({
+          symbol: row.symbol,
+          action: "HOLD" as const,
+          snapshot: row.m5,
+          noTrade: decision.vetoes,
+          qualityScore: decision.qualityScore,
+        });
         continue;
       }
       await prisma.signal.create({
@@ -184,7 +191,7 @@ export class TradingOrchestrator {
           userId,
           symbol: signal.symbol,
           direction: signal.direction,
-          confidence: signal.confidence,
+          confidence: signal.qualityScore,
           strategy: signal.strategy,
           status: "NEW",
           entryPrice: signal.entryPrice,
@@ -192,6 +199,7 @@ export class TradingOrchestrator {
           takeProfit: signal.takeProfit,
           reasoning: signal.reasoning,
           riskReward: signal.riskReward,
+          factorsJson: JSON.stringify(signal.scoreLines || []),
           expiresAt: new Date(Date.now() + SIGNAL_TTL_MS),
         },
       });
@@ -558,6 +566,7 @@ export class TradingOrchestrator {
       symbol: row.symbol,
       direction: row.direction === "SHORT" ? "SHORT" : "LONG",
       confidence: row.confidence,
+      qualityScore: row.confidence,
       entryPrice: row.entryPrice,
       stopLoss: row.stopLoss,
       takeProfit: row.takeProfit,
@@ -897,7 +906,13 @@ export class TradingOrchestrator {
                 circuitReason: circuitNow.reason,
               })
             : { allowed: false, sizeUsdt: 0, marginUsdt: 0, leverage: 1, quantity: 0, explain: undefined };
-          const factors = buildSignalFactors(best.h1, best.m5, best.signal.direction);
+          const factors =
+            (best.signal.scoreLines || []).map((l) => ({
+              ok: l.ok,
+              textRu: `${l.textRu} (${l.points}/${l.max})`,
+              textEn: `${l.textEn} (${l.points}/${l.max})`,
+            })) || [];
+          const factorList = factors.length ? factors : buildSignalFactors(best.h1, best.m5, best.signal.direction);
           const sizeUsdt = risk.allowed ? risk.sizeUsdt : 0;
           const row = await prisma.signal.create({
             data: {
@@ -912,7 +927,7 @@ export class TradingOrchestrator {
               takeProfit: best.signal.takeProfit,
               riskReward: best.signal.riskReward,
               reasoning: best.signal.reasoning,
-              factorsJson: JSON.stringify(factors),
+              factorsJson: JSON.stringify(factorList),
               sizeUsdt: risk.allowed ? risk.sizeUsdt : null,
               marginUsdt: risk.allowed ? risk.marginUsdt : null,
               leverage: risk.allowed ? risk.leverage : null,
@@ -932,7 +947,7 @@ export class TradingOrchestrator {
             sl: best.signal.stopLoss,
             tp: best.signal.takeProfit,
             riskReward: best.signal.riskReward,
-            factors,
+            factors: factorList,
             sizeUsdt: row.sizeUsdt,
             marginUsdt: row.marginUsdt,
             leverage: row.leverage,

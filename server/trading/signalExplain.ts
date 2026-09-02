@@ -6,25 +6,25 @@ export const SIGNAL_PRICE_DRIFT_PCT = 0.8;
 export type SignalFactor = { ok: boolean; textRu: string; textEn: string };
 export type SignalStrength = "weak" | "medium" | "strong" | "very_strong";
 
-export function signalStrength(confidence: number): SignalStrength {
-  if (confidence >= 85) return "very_strong";
-  if (confidence >= 70) return "strong";
-  if (confidence >= 50) return "medium";
+export function signalStrength(score: number): SignalStrength {
+  if (score >= 85) return "very_strong";
+  if (score >= 70) return "strong";
+  if (score >= 50) return "medium";
   return "weak";
 }
 
-export function signalStrengthLabel(confidence: number, lang: "ru" | "en") {
-  const s = signalStrength(confidence);
+export function signalStrengthLabel(score: number, lang: "ru" | "en") {
+  const s = signalStrength(score);
   if (lang === "en") {
-    if (s === "very_strong") return "🔥 Very strong";
-    if (s === "strong") return "🟢 Strong";
-    if (s === "medium") return "🟡 Medium";
-    return "🔴 Weak";
+    if (s === "very_strong") return "🔥 Very strong setup";
+    if (s === "strong") return "🟢 Strong setup";
+    if (s === "medium") return "🟡 Average setup";
+    return "🔴 Weak setup";
   }
-  if (s === "very_strong") return "🔥 Очень сильный";
-  if (s === "strong") return "🟢 Высокая";
-  if (s === "medium") return "🟡 Средняя";
-  return "🔴 Слабый";
+  if (s === "very_strong") return "🔥 Очень сильный сетап";
+  if (s === "strong") return "🟢 Сильный сетап";
+  if (s === "medium") return "🟡 Средний сетап";
+  return "🔴 Слабый сетап";
 }
 
 export function buildSignalFactors(h1: MarketSnapshot, m5: MarketSnapshot, direction: TradeSide): SignalFactor[] {
@@ -36,11 +36,13 @@ export function buildSignalFactors(h1: MarketSnapshot, m5: MarketSnapshot, direc
     ? m5.macdSignal === "BULLISH_CROSS" || h1.trend === "BULLISH"
     : m5.macdSignal === "BEARISH_CROSS" || h1.trend === "BEARISH";
   const volOk = m5.volatility !== "EXTREME" && m5.volatility !== "LOW";
-  return [
+  const volumeKnown = typeof m5.relativeVolume === "number" && m5.relativeVolume > 0;
+  const volumeOk = volumeKnown && m5.relativeVolume! >= 1.2;
+  const factors: SignalFactor[] = [
     {
       ok: trendOk,
-      textRu: long ? "Цена выше основной трендовой линии" : "Цена ниже основной трендовой линии",
-      textEn: long ? "Price is above the main trend line" : "Price is below the main trend line",
+      textRu: long ? "Тренд: восходящий" : "Тренд: нисходящий",
+      textEn: long ? "Trend: up" : "Trend: down",
     },
     {
       ok: emaOk,
@@ -49,20 +51,30 @@ export function buildSignalFactors(h1: MarketSnapshot, m5: MarketSnapshot, direc
     },
     {
       ok: rsiOk,
-      textRu: `RSI ${m5.rsi.toFixed(0)} — ${rsiOk ? "нейтрально-позитивный" : "не в рабочей зоне"}`,
-      textEn: `RSI ${m5.rsi.toFixed(0)} — ${rsiOk ? "neutral-positive" : "outside the working zone"}`,
+      textRu: `RSI ${m5.rsi.toFixed(0)} — ${rsiOk ? "рабочая зона" : "не в рабочей зоне"}`,
+      textEn: `RSI ${m5.rsi.toFixed(0)} — ${rsiOk ? "in range" : "outside the working zone"}`,
     },
     {
       ok: macdOk,
-      textRu: macdOk ? "Технические индикаторы поддерживают сценарий" : "MACD не подтверждает сценарий",
-      textEn: macdOk ? "Technical indicators support the scenario" : "MACD does not confirm the scenario",
+      textRu: macdOk ? "Momentum подтверждает сценарий" : "MACD не подтверждает сценарий",
+      textEn: macdOk ? "Momentum supports the scenario" : "MACD does not confirm the scenario",
+    },
+    {
+      ok: volumeKnown ? volumeOk : false,
+      textRu: volumeKnown
+        ? `Объём x${m5.relativeVolume!.toFixed(2)} ${volumeOk ? "подтверждает" : "слабый"}`
+        : "Объём в этом снимке не анализировался",
+      textEn: volumeKnown
+        ? `Volume x${m5.relativeVolume!.toFixed(2)} ${volumeOk ? "confirms" : "is weak"}`
+        : "Volume was not analyzed in this snapshot",
     },
     {
       ok: volOk,
-      textRu: volOk ? "Волатильность рабочая, не экстремальная" : "Волатильность не подходит",
-      textEn: volOk ? "Volatility is usable, not extreme" : "Volatility is not suitable",
+      textRu: volOk ? "Волатильность допустимая" : "Волатильность не подходит",
+      textEn: volOk ? "Volatility is acceptable" : "Volatility is not suitable",
     },
   ];
+  return factors;
 }
 
 export function potentialMoveUsdt(entry: number, target: number, sizeUsdt: number) {

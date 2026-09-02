@@ -22,6 +22,7 @@ import {
   signalHistoryScreen,
   signalExpiredText,
   signalSkippedText,
+  noTradeText,
 } from "./ui/signalMenu.js";
 import { historyList, resultsScreen, statsScreen } from "./ui/historyMenu.js";
 import { riskScreen, riskExplain, riskEdit } from "./ui/riskMenu.js";
@@ -154,26 +155,30 @@ async function showSignals(reply: Reply, user: TgUser) {
     orderBy: { createdAt: "desc" },
   });
   if (!row) {
+    let results: Awaited<ReturnType<typeof tradingOrchestrator.scanOnce>> = [];
     try {
-      const results = await tradingOrchestrator.scanOnce(user.id);
-      const hit = results.filter((r) => r.signal).sort((a, b) => (b.signal!.confidence || 0) - (a.signal!.confidence || 0))[0];
-      if (hit?.signal) pendingSignals.set(user.id, hit.signal);
+      results = await tradingOrchestrator.scanOnce(user.id);
+      const hit = results.filter((r) => "signal" in r && r.signal).sort((a, b) => ((b as { signal?: { confidence?: number } }).signal?.confidence || 0) - ((a as { signal?: { confidence?: number } }).signal?.confidence || 0))[0];
+      if (hit && "signal" in hit && hit.signal) pendingSignals.set(user.id, hit.signal);
     } catch (err) {
       await reply(friendlyError(err instanceof Error ? err.message : String(err), lang), { parse_mode: "HTML" });
       return;
     }
-    row = await prisma.signal.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "desc" } });
+    row = await prisma.signal.findFirst({
+      where: { userId: user.id, status: { in: ["NEW", "NOTIFIED", "VALIDATED"] } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!row) {
+      const hold = results.find((r) => "noTrade" in r && Array.isArray((r as { noTrade?: unknown[] }).noTrade)) as
+        | { noTrade?: { textRu: string; textEn: string }[]; qualityScore?: number }
+        | undefined;
+      const kb = new InlineKeyboard().text(lang === "en" ? "📡 History" : "📡 История", "sighist");
+      navRow(kb.row(), lang);
+      await reply(noTradeText(lang, hold?.noTrade || [], hold?.qualityScore), { parse_mode: "HTML", reply_markup: kb });
+      return;
+    }
   }
-  const view = row ? viewFromSignalRow(row) : null;
-  if (!view) {
-    const hist = await prisma.signal.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 8 });
-    const screen = signalHistoryScreen(
-      lang,
-      hist.map((s) => ({ symbol: s.symbol, direction: s.direction, confidence: s.confidence, status: s.status }))
-    );
-    await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
-    return;
-  }
+  const view = viewFromSignalRow(row);
   const expired = isSignalExpired(view.expiresAt || undefined) || view.status === "EXPIRED";
   const confirm = Boolean((user as { confirmBeforeOpen?: boolean }).confirmBeforeOpen);
   const text = signalOfferText(lang, view, confirm ? "confirm" : "auto");
@@ -203,7 +208,17 @@ function viewFromSignalRow(row: {
 }) {
   let factors: SignalFactor[] = [];
   try {
-    factors = row.factorsJson ? (JSON.parse(row.factorsJson) as SignalFactor[]) : [];
+    const parsed = row.factorsJson ? JSON.parse(row.factorsJson) : [];
+    if (Array.isArray(parsed)) {
+      factors = parsed.map((item: { ok?: boolean; textRu?: string; textEn?: string; points?: number; max?: number }) => {
+        const extra = item.points != null && item.max != null ? ` (${item.points}/${item.max})` : "";
+        return {
+          ok: Boolean(item.ok),
+          textRu: `${item.textRu || ""}${extra}`,
+          textEn: `${item.textEn || ""}${extra}`,
+        };
+      });
+    }
   } catch {
     factors = [];
   }

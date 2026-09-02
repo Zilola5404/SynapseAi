@@ -95,8 +95,8 @@ export function signalNotifyMessage(
       ? `📉 Opportunity to sell ${p.symbol.replace("USDT", "")}`
       : `📉 Возможность для продажи ${p.symbol.replace("USDT", "")}`;
   return lang === "en"
-    ? `🔎 <b>New trading signal</b>\n\n${title}\n\nAnalysis confidence: ${p.confidence}%\n\n🟢 The system considers conditions suitable for a trade.`
-    : `🔎 <b>Новый торговый сигнал</b>\n\n${title}\n\nУверенность анализа: ${p.confidence}%\n\n🟢 Система считает условия достаточно подходящими для сделки.`;
+    ? `🔎 <b>New trading signal</b>\n\n${title}\n\nSetup quality: ${p.confidence}/100\n\nℹ️ This is not a win probability.`
+    : `🔎 <b>Новый торговый сигнал</b>\n\n${title}\n\nКачество сетапа: ${p.confidence}/100\n\nℹ️ Это не вероятность прибыли.`;
 }
 
 export function marketDataDownMessage(lang: LocaleCode) {

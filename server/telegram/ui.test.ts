@@ -72,7 +72,7 @@ assert.match(
     potentialProfitUsdt: 100,
     expiresAt: new Date(Date.now() + 60_000),
   }, "confirm"),
-  /НАЙДЕН ТОРГОВЫЙ СИГНАЛ[\s\S]*ПОКУПКА[\s\S]*не гарантия прибыли[\s\S]*Предлагаемый размер/
+  /НАШЁЛ СЕТАП[\s\S]*ПОКУПКА[\s\S]*Качество сетапа: 78 \/ 100[\s\S]*не вероятность прибыли[\s\S]*Предлагаемый размер/
 );
 
 console.log("  PASS  Telegram UX: Russian copy, friendly errors, no raw stack traces");

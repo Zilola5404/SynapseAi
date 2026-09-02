@@ -16,18 +16,39 @@ export interface MarketSnapshot {
   atr: number;
   volatility: "LOW" | "MEDIUM" | "HIGH" | "EXTREME";
   timeframe: string;
+  volume?: number;
+  avgVolume?: number;
+  relativeVolume?: number;
+  structure?: "BULLISH" | "BEARISH" | "RANGE";
+  regime?: "TRENDING" | "RANGING" | "HIGH_VOLATILITY" | "LOW_VOLATILITY";
+  lastSwingHigh?: number;
+  lastSwingLow?: number;
+  nearestSupport?: number;
+  nearestResistance?: number;
 }
+
+export type ScoreLine = {
+  key: string;
+  points: number;
+  max: number;
+  ok: boolean;
+  textRu: string;
+  textEn: string;
+};
 
 export interface StrategySignal {
   symbol: string;
   direction: TradeSide;
+  /** Setup quality 0–100. Not a win-rate or profit probability. */
   confidence: number;
+  qualityScore: number;
   entryPrice: number;
   stopLoss: number;
   takeProfit: number;
   riskReward: number;
   reasoning: string;
   strategy: string;
+  scoreLines?: ScoreLine[];
 }
 
 import type { SizeBreakdown } from "./risk/PositionSizer.js";

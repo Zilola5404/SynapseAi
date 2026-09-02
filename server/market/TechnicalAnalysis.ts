@@ -1,6 +1,7 @@
 import type { BinanceCandle } from "../binance.js";
 import { calculateIndicators } from "../binance.js";
 import type { MarketSnapshot } from "../trading/types.js";
+import { classifyStructure, detectRegime, findSwings, nearestLevels, relativeVolume } from "./swings.js";
 
 function ema(values: number[], period: number): number {
   if (values.length === 0) return 0;
@@ -23,6 +24,13 @@ export function toSnapshot(symbol: string, candles: BinanceCandle[], timeframe: 
   if (ind.ema20 > ind.ema50 && price > ema200) trend = "BULLISH";
   else if (ind.ema20 < ind.ema50 && price < ema200) trend = "BEARISH";
 
+  const swings = findSwings(candles);
+  const structure = classifyStructure(swings);
+  const levels = nearestLevels(price, swings);
+  const vol = relativeVolume(candles, 20);
+  const emaAligned = trend === "BULLISH" || trend === "BEARISH";
+  const regime = detectRegime({ structure, volatility, emaAligned });
+
   return {
     symbol: symbol.replace("/", "").toUpperCase(),
     price,
@@ -35,6 +43,15 @@ export function toSnapshot(symbol: string, candles: BinanceCandle[], timeframe: 
     atr: ind.atr,
     volatility,
     timeframe,
+    volume: vol.volume,
+    avgVolume: vol.avgVolume,
+    relativeVolume: Number(vol.relativeVolume.toFixed(3)),
+    structure,
+    regime,
+    lastSwingHigh: levels.lastSwingHigh || undefined,
+    lastSwingLow: levels.lastSwingLow || undefined,
+    nearestSupport: levels.nearestSupport || undefined,
+    nearestResistance: levels.nearestResistance || undefined,
   };
 }
 
