@@ -47,17 +47,39 @@ export function tradeOpenedMessage(
 
 export function tradeClosedMessage(
   lang: LocaleCode,
-  p: { symbol: string; pnl: number; fees: number; reason: string }
+  p: {
+    symbol: string;
+    pnl: number;
+    fees: number;
+    reason: string;
+    grossPnl?: number;
+    entryFee?: number;
+    exitFee?: number;
+  }
 ) {
   const reason = closeReasonLabel(p.reason, lang);
+  const feeBlock =
+    p.entryFee != null && p.exitFee != null
+      ? lang === "en"
+        ? `\n💳 Entry fee: ${money(-Math.abs(p.entryFee))}\n💳 Exit fee: ${money(-Math.abs(p.exitFee))}\n💳 Total fees: ${money(-Math.abs(p.fees))}`
+        : `\n💳 Комиссия входа: ${money(-Math.abs(p.entryFee))}\n💳 Комиссия выхода: ${money(-Math.abs(p.exitFee))}\n💳 Всего комиссий: ${money(-Math.abs(p.fees))}`
+      : lang === "en"
+        ? `\n💳 Fees: ${money(-Math.abs(p.fees))}`
+        : `\n💳 Комиссия: ${money(-Math.abs(p.fees))}`;
+  const gross =
+    p.grossPnl != null
+      ? lang === "en"
+        ? `\n📊 Gross result: ${money(p.grossPnl)}`
+        : `\n📊 Результат до комиссий: ${money(p.grossPnl)}`
+      : "";
   if (p.pnl >= 0) {
     return lang === "en"
-      ? `🟢 <b>TRADE CLOSED</b>\n\n${coin(p.symbol)}\n\n📈 Profit:\n${money(p.pnl)}\n\n💳 Fees:\n${money(-Math.abs(p.fees))}\n\n📌 Reason:\n${reason}\n\n🎯 The trade was closed automatically.`
-      : `🟢 <b>СДЕЛКА ЗАКРЫТА</b>\n\n${coin(p.symbol)}\n\n📈 Прибыль:\n${money(p.pnl)}\n\n💳 Комиссия:\n${money(-Math.abs(p.fees))}\n\n📌 Причина:\n${reason}\n\n🎯 Сделка завершена автоматически.`;
+      ? `🟢 <b>TRADE CLOSED</b>\n\n${coin(p.symbol)}\n\n📈 Net profit:\n${money(p.pnl)}${gross}${feeBlock}\n\n📌 Reason:\n${reason}\n\n🎯 The trade was closed automatically.`
+      : `🟢 <b>СДЕЛКА ЗАКРЫТА</b>\n\n${coin(p.symbol)}\n\n📈 Чистая прибыль:\n${money(p.pnl)}${gross}${feeBlock}\n\n📌 Причина:\n${reason}\n\n🎯 Сделка завершена автоматически.`;
   }
   return lang === "en"
-    ? `🔴 <b>TRADE CLOSED</b>\n\n${coin(p.symbol)}\n\n📉 Result:\n${money(p.pnl)}\n\n💳 Fees:\n${money(-Math.abs(p.fees))}\n\n📌 Reason:\n${reason}\n\n🛡 The loss was limited by the risk management system.`
-    : `🔴 <b>СДЕЛКА ЗАКРЫТА</b>\n\n${coin(p.symbol)}\n\n📉 Результат:\n${money(p.pnl)}\n\n💳 Комиссия:\n${money(-Math.abs(p.fees))}\n\n📌 Причина:\n${reason}\n\n🛡 Убыток был ограничен системой\nуправления рисками.`;
+    ? `🔴 <b>TRADE CLOSED</b>\n\n${coin(p.symbol)}\n\n📉 Net result:\n${money(p.pnl)}${gross}${feeBlock}\n\n📌 Reason:\n${reason}\n\n🛡 The loss was limited by the risk management system.`
+    : `🔴 <b>СДЕЛКА ЗАКРЫТА</b>\n\n${coin(p.symbol)}\n\n📉 Чистый результат:\n${money(p.pnl)}${gross}${feeBlock}\n\n📌 Причина:\n${reason}\n\n🛡 Убыток был ограничен системой\nуправления рисками.`;
 }
 
 export function signalNotifyMessage(

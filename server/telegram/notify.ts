@@ -19,15 +19,26 @@ export async function userLang(userId: string): Promise<LocaleCode> {
   return localeCode(user?.locale);
 }
 
-export async function notifyEvent(userId: string, kind: NotifyKind, html: string) {
+export async function notifyEvent(
+  userId: string,
+  kind: NotifyKind,
+  html: string,
+  extra?: { replyMarkup?: unknown }
+) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return;
   const field = KIND_FIELD[kind];
-  if (field && (user as any)[field] === false) return;
+  if (field && (user as { [k: string]: unknown })[field] === false) return;
   const chatId = user.telegramChatId || config.telegramOwnerChatId;
   const token = config.telegramBotToken;
   if (!chatId || !token) return;
-  const result = await sendTelegramMessage({ botToken: token, chatId, message: html, parseMode: "HTML" });
+  const result = await sendTelegramMessage({
+    botToken: token,
+    chatId,
+    message: html,
+    parseMode: "HTML",
+    replyMarkup: extra?.replyMarkup,
+  });
   if (!result.success) {
     logger.warn({ error: result.error, userId, kind }, "Telegram notify failed");
   }

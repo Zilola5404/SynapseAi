@@ -36,11 +36,25 @@ export type PaperSoakReport = {
   avgSlPct: number;
   feeShareOfLoss: number;
   canReopenAfterClose: boolean;
+  pnlConsistent: boolean;
+  feesConsistent: boolean;
   readyForTestnet: boolean;
   blockers: string[];
 };
 
 const STUCK_MS = 60_000;
+
+export function reopenAfterClosePassed(trades: SoakTrade[], positions: SoakPosition[]) {
+  const paperTrades = trades.filter((t) => t.isPaper);
+  const paperPos = positions.filter((p) => p.isPaper);
+  const closedBySymbol = new Map<string, number>();
+  for (const t of paperTrades) {
+    closedBySymbol.set(t.symbol, (closedBySymbol.get(t.symbol) || 0) + 1);
+  }
+  if ([...closedBySymbol.values()].some((n) => n >= 2)) return true;
+  const openNow = paperPos.filter((p) => p.status === "OPEN" || p.status === "CLOSING");
+  return [...closedBySymbol.entries()].some(([symbol, n]) => n >= 1 && openNow.some((p) => p.symbol === symbol));
+}
 
 export function summarizePaperSoak(params: {
   trades: SoakTrade[];
@@ -84,27 +98,23 @@ export function summarizePaperSoak(params: {
   const lossAbs = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
   const feeShareOfLoss = lossAbs > 0 ? fees / lossAbs : 0;
 
-  const closedSymbols = new Set(paperTrades.map((t) => t.symbol));
-  const openSymbols = new Set(open.map((p) => p.symbol));
-  const canReopenAfterClose =
-    paperTrades.length === 0 || [...closedSymbols].some((s) => !openSymbols.has(s)) || open.length === 0;
+  const canReopenAfterClose = reopenAfterClosePassed(paperTrades, paperPos);
+  const pnlConsistent = paperTrades.length > 0 && paperTrades.every((t) => Number.isFinite(t.pnl));
+  const feesConsistent =
+    paperTrades.length > 0 &&
+    paperTrades.every((t) => (t.fees || 0) > 0 && t.sizeUsdt > 0 && t.fees >= t.sizeUsdt * 0.0007);
 
   const blockers: string[] = [];
   if (paperTrades.length < targetMin) blockers.push("need_more_trades");
+  if (slCloses < 1) blockers.push("need_stop_loss");
+  if (tpCloses < 1) blockers.push("need_take_profit");
   if (stuckClosing > 0) blockers.push("stuck_closing");
   if (duplicateSymbols.length) blockers.push("duplicates");
-  if (!canReopenAfterClose && paperTrades.length > 0 && open.length > 0 && closedSymbols.size === openSymbols.size) {
-    /* still ok if some closed symbols are free */
-  }
-  if (stuckClosing > 0 || duplicateSymbols.length) {
-    /* blockers already set */
-  }
+  if (!canReopenAfterClose) blockers.push("need_reopen");
+  if (!pnlConsistent) blockers.push("pnl_inconsistent");
+  if (!feesConsistent) blockers.push("fees_inconsistent");
 
-  const readyForTestnet =
-    paperTrades.length >= targetMin &&
-    stuckClosing === 0 &&
-    duplicateSymbols.length === 0 &&
-    (slCloses > 0 || tpCloses > 0 || paperTrades.length >= targetMin);
+  const readyForTestnet = blockers.length === 0;
 
   return {
     targetMin,
@@ -125,6 +135,8 @@ export function summarizePaperSoak(params: {
     avgSlPct,
     feeShareOfLoss,
     canReopenAfterClose,
+    pnlConsistent,
+    feesConsistent,
     readyForTestnet,
     blockers,
   };

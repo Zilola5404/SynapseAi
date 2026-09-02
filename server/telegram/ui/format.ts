@@ -93,9 +93,14 @@ export function friendlyError(raw: string, locale: "ru" | "en") {
       ? "⚠️ Could not load fresh market data right now.\n\n🤖 New trades are paused.\nThe system will retry automatically."
       : "⚠️ Временно не удалось получить свежие данные рынка.\n\n🤖 Новые сделки пока не открываются.\nСистема автоматически попробует подключиться снова.";
   }
+  if (/SIGNAL_EXPIRED|SIGNAL_STALE/i.test(s)) {
+    return locale === "en"
+      ? "⚠️ This signal has expired.\nThe market may have changed. Run a new analysis."
+      : "⚠️ Сигнал устарел.\nРынок изменился. Запустите новый анализ.";
+  }
   if (/already has an OPEN position/i.test(s)) {
     return locale === "en"
-      ? "По этой монете уже есть открытая сделка."
+      ? "There is already an open trade on this coin."
       : "По этой монете уже есть открытая сделка.";
   }
   if (/DEGRADED/i.test(s)) {

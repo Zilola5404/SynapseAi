@@ -28,9 +28,9 @@ export const config = {
   port: Number(process.env.PORT || 3000),
   nodeEnv: process.env.NODE_ENV || "development",
   databaseUrl: process.env.DATABASE_URL || "",
-  jwtSecret: process.env.JWT_SECRET || "dev-only-change-me-jwt-secret-32ch",
+  jwtSecret: readJwtSecret(),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
-  encryptionKeyRaw: process.env.ENCRYPTION_KEY || "",
+  encryptionKeyRaw: readEncryptionKeyRaw(),
   geminiApiKey: process.env.GEMINI_API_KEY || "",
   telegramBotToken: (process.env.TELEGRAM_BOT_TOKEN || "").trim().replace(/^["']|["']$/g, ""),
   telegramOwnerChatId: (process.env.TELEGRAM_CHAT_ID || "").trim().replace(/^["']|["']$/g, ""),
@@ -42,6 +42,32 @@ export const config = {
   telegramApiRoot: (process.env.TELEGRAM_API_ROOT || "https://api.telegram.org").trim().replace(/\/$/, ""),
   binanceUseTestnet: process.env.BINANCE_USE_TESTNET !== "false",
 };
+
+function isProduction() {
+  return (process.env.NODE_ENV || "").toLowerCase() === "production";
+}
+
+function readJwtSecret() {
+  const value = process.env.JWT_SECRET || "";
+  if (isProduction()) {
+    if (!value || value === "dev-only-change-me-jwt-secret-32ch" || value.length < 32) {
+      throw new Error("JWT_SECRET is required in production (min 32 chars, no development default)");
+    }
+  }
+  return value || "dev-only-change-me-jwt-secret-32ch";
+}
+
+function readEncryptionKeyRaw() {
+  const value = process.env.ENCRYPTION_KEY || "";
+  if (isProduction() && !value) {
+    throw new Error("ENCRYPTION_KEY is required in production");
+  }
+  return value;
+}
+
+if (isProduction() && !process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required in production");
+}
 
 export function getEncryptionKey(): Buffer {
   if (!config.encryptionKeyRaw) {

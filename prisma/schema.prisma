@@ -52,6 +52,7 @@ model User {
   notifySystem            Boolean  @default(true)
   notifyDailyReport       Boolean  @default(true)
   lastDailyReportAt       DateTime?
+  confirmBeforeOpen       Boolean  @default(false)
   signals                 Signal[]
   exchangeOrders          ExchangeOrder[]
   circuitBreaker          CircuitBreakerState?
@@ -124,6 +125,8 @@ model ActivePosition {
   riskLevel          String   @default("MEDIUM")
   status             String   @default("OPEN")
   closeRequestedAt   DateTime?
+  finalizedAt        DateTime?
+  entryFeeUsdt       Float    @default(0)
   openedAt           DateTime @default(now())
   updatedAt          DateTime @updatedAt
   entryOrderId       String?
@@ -213,10 +216,14 @@ model OrderHistory {
   leverage        Int
   pnl             Float    @default(0)
   pnlPct          Float    @default(0)
+  grossPnl        Float    @default(0)
+  entryFeeUsdt    Float    @default(0)
+  exitFeeUsdt     Float    @default(0)
   commissionUsdt  Float    @default(0)
   status          String   @default("FILLED")
   exitReason      String?
   exchangeOrderId String?
+  positionId      String?  @unique
   isPaperTrade    Boolean  @default(true)
   aiConfidence    Int      @default(0)
   openedAt        DateTime @default(now())
@@ -245,19 +252,28 @@ model SystemLog {
 }
 
 model Signal {
-  id          String   @id @default(cuid())
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  symbol      String
-  direction   String
-  confidence  Int
-  strategy    String   @default("TREND_MOMENTUM")
-  status      String   @default("NEW")
-  entryPrice  Float?
-  stopLoss    Float?
-  takeProfit  Float?
-  reasoning   String   @default("")
-  createdAt   DateTime @default(now())
+  id                   String    @id @default(cuid())
+  userId               String?
+  user                 User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  symbol               String
+  direction            String
+  confidence           Int
+  strategy             String    @default("TREND_MOMENTUM")
+  status               String    @default("NEW")
+  entryPrice           Float?
+  stopLoss             Float?
+  takeProfit           Float?
+  riskReward           Float     @default(0)
+  reasoning            String    @default("")
+  factorsJson          String    @default("[]")
+  sizeUsdt             Float?
+  marginUsdt           Float?
+  leverage             Int?
+  quantity             Float?
+  maxRiskUsdt          Float?
+  potentialProfitUsdt  Float?
+  expiresAt            DateTime?
+  createdAt            DateTime  @default(now())
 
   @@index([userId, createdAt])
   @@map("signals")

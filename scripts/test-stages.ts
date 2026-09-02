@@ -12,6 +12,8 @@ const tests = [
   "server/market/marketData.test.ts",
   "server/telegram/ui.test.ts",
   "server/trading/paperSoak.test.ts",
+  "server/trading/pnl.test.ts",
+  "server/trading/signalExplain.test.ts",
 ];
 
 async function runFile(file: string): Promise<number> {

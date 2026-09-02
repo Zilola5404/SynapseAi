@@ -8,12 +8,21 @@ import { livePositionStatus } from "../trading/positionState.js";
 import { SCAN_SYMBOLS } from "../trading/types.js";
 import { equityForUser } from "../trading/equity.js";
 import { planPositionSize, type PositionSizeMode } from "../trading/risk/PositionSizer.js";
+import { isSignalExpired, type SignalFactor } from "../trading/signalExplain.js";
 import { localeCode, type LocaleCode } from "./locales/index.js";
 import { friendlyError } from "./ui/format.js";
 import { homeScreen, botStartedText, botStoppedText, lockedNeedUnlock } from "./ui/mainMenu.js";
-import { marketOverview, marketCoin, signalsScreen } from "./ui/marketMenu.js";
+import { marketOverview, marketCoin } from "./ui/marketMenu.js";
 import { positionsEmpty, positionCard } from "./ui/positionsMenu.js";
 import { sizeSettingsScreen, sizeWhyScreen, sizeModeWarning } from "./ui/sizeMenu.js";
+import {
+  signalOfferText,
+  signalOfferKeyboard,
+  signalDetailsText,
+  signalHistoryScreen,
+  signalExpiredText,
+  signalSkippedText,
+} from "./ui/signalMenu.js";
 import { historyList, resultsScreen, statsScreen } from "./ui/historyMenu.js";
 import { riskScreen, riskExplain, riskEdit } from "./ui/riskMenu.js";
 import {
@@ -29,7 +38,7 @@ import {
   panicDone,
 } from "./ui/settingsMenu.js";
 import { helpHome, helpHow, helpProtect, helpRisks, helpSupport } from "./ui/helpMenu.js";
-import { replyMainKeyboard } from "./ui/keyboards.js";
+import { replyMainKeyboard, navRow } from "./ui/keyboards.js";
 import { pendingSignals } from "./state.js";
 import { systemSnapshot } from "../routes/health.js";
 import { telegramRuntime } from "./runtime.js";
@@ -59,6 +68,7 @@ function sizeFields(r: RiskSettings | null) {
     maxPositionSizePct: r?.maxPositionSizePct ?? 10,
     maxNotionalUsdt: extra.maxNotionalUsdt == null ? 500 : extra.maxNotionalUsdt,
     fixedNotionalUsdt: extra.fixedNotionalUsdt == null ? 50 : extra.fixedNotionalUsdt,
+    maxExposurePct: r?.maxExposurePct ?? 30,
   };
 }
 
@@ -135,22 +145,87 @@ async function showCoin(reply: Reply, user: TgUser, symbol: string) {
 
 async function showSignals(reply: Reply, user: TgUser) {
   const lang = langOf(user);
-  let best = pendingSignals.get(user.id) || null;
-  if (!best) {
+  await prisma.signal.updateMany({
+    where: { userId: user.id, status: { in: ["NEW", "NOTIFIED"] }, expiresAt: { lt: new Date() } },
+    data: { status: "EXPIRED" },
+  });
+  let row = await prisma.signal.findFirst({
+    where: { userId: user.id, status: { in: ["NEW", "NOTIFIED", "VALIDATED"] } },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!row) {
     try {
       const results = await tradingOrchestrator.scanOnce(user.id);
       const hit = results.filter((r) => r.signal).sort((a, b) => (b.signal!.confidence || 0) - (a.signal!.confidence || 0))[0];
-      if (hit?.signal) {
-        pendingSignals.set(user.id, hit.signal);
-        best = hit.signal;
-      }
+      if (hit?.signal) pendingSignals.set(user.id, hit.signal);
     } catch (err) {
       await reply(friendlyError(err instanceof Error ? err.message : String(err), lang), { parse_mode: "HTML" });
       return;
     }
+    row = await prisma.signal.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "desc" } });
   }
-  const screen = signalsScreen(lang, best);
-  await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
+  const view = row ? viewFromSignalRow(row) : null;
+  if (!view) {
+    const hist = await prisma.signal.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 8 });
+    const screen = signalHistoryScreen(
+      lang,
+      hist.map((s) => ({ symbol: s.symbol, direction: s.direction, confidence: s.confidence, status: s.status }))
+    );
+    await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
+    return;
+  }
+  const expired = isSignalExpired(view.expiresAt || undefined) || view.status === "EXPIRED";
+  const confirm = Boolean((user as { confirmBeforeOpen?: boolean }).confirmBeforeOpen);
+  const text = signalOfferText(lang, view, confirm ? "confirm" : "auto");
+  const kb = signalOfferKeyboard(lang, view.id || "x", expired);
+  kb.row().text(lang === "en" ? "📡 History" : "📡 История", "sighist");
+  await reply(text, { parse_mode: "HTML", reply_markup: kb });
+}
+
+function viewFromSignalRow(row: {
+  id: string;
+  symbol: string;
+  direction: string;
+  confidence: number;
+  entryPrice: number | null;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  riskReward?: number | null;
+  factorsJson?: string | null;
+  sizeUsdt?: number | null;
+  marginUsdt?: number | null;
+  leverage?: number | null;
+  quantity?: number | null;
+  maxRiskUsdt?: number | null;
+  potentialProfitUsdt?: number | null;
+  expiresAt?: Date | null;
+  status: string;
+}) {
+  let factors: SignalFactor[] = [];
+  try {
+    factors = row.factorsJson ? (JSON.parse(row.factorsJson) as SignalFactor[]) : [];
+  } catch {
+    factors = [];
+  }
+  return {
+    id: row.id,
+    symbol: row.symbol,
+    direction: row.direction,
+    confidence: row.confidence,
+    entry: row.entryPrice || 0,
+    sl: row.stopLoss || 0,
+    tp: row.takeProfit || 0,
+    riskReward: row.riskReward || 0,
+    factors,
+    sizeUsdt: row.sizeUsdt,
+    marginUsdt: row.marginUsdt,
+    leverage: row.leverage,
+    quantity: row.quantity,
+    maxRiskUsdt: row.maxRiskUsdt,
+    potentialProfitUsdt: row.potentialProfitUsdt,
+    expiresAt: row.expiresAt,
+    status: row.status,
+  };
 }
 
 async function showPositions(reply: Reply, user: TgUser) {
@@ -577,18 +652,85 @@ export async function handleAction(
       return;
     }
     if (action === "open_paper") {
+      const latest = await prisma.signal.findFirst({
+        where: { userId: user.id, status: { in: ["NEW", "NOTIFIED", "VALIDATED"] } },
+        orderBy: { createdAt: "desc" },
+      });
+      if (latest) {
+        await tradingOrchestrator.acceptStoredSignal(user.id, latest.id);
+        return;
+      }
       const signal = pendingSignals.get(user.id);
       if (!signal) {
         await reply(lang === "en" ? "No active signal. Open Signals first." : "Нет активного сигнала. Сначала откройте «Сигналы».");
         return;
       }
-      await tradingOrchestrator.openFromSignal(user.id, signal);
+      await tradingOrchestrator.openFromSignal(user.id, signal, "manual");
       pendingSignals.delete(user.id);
+      return;
+    }
+    if (action.startsWith("sigopen:")) {
+      try {
+        await tradingOrchestrator.acceptStoredSignal(user.id, action.slice(8));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg === "SIGNAL_EXPIRED" || msg === "SIGNAL_STALE") {
+          await reply(signalExpiredText(lang), { parse_mode: "HTML" });
+          return;
+        }
+        throw err;
+      }
+      return;
+    }
+    if (action.startsWith("siginfo:")) {
+      const row = await prisma.signal.findFirst({ where: { id: action.slice(8), userId: user.id } });
+      if (!row) return;
+      await reply(signalDetailsText(lang, viewFromSignalRow(row)), {
+        parse_mode: "HTML",
+        reply_markup: signalOfferKeyboard(lang, row.id, isSignalExpired(row.expiresAt) || row.status === "EXPIRED"),
+      });
+      return;
+    }
+    if (action.startsWith("sigskip:")) {
+      await tradingOrchestrator.skipStoredSignal(user.id, action.slice(8));
+      pendingSignals.delete(user.id);
+      await reply(signalSkippedText(lang), { parse_mode: "HTML" });
+      return;
+    }
+    if (action === "sighist") {
+      const hist = await prisma.signal.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 8 });
+      const screen = signalHistoryScreen(
+        lang,
+        hist.map((s) => ({ symbol: s.symbol, direction: s.direction, confidence: s.confidence, status: s.status }))
+      );
+      await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
       return;
     }
     if (action === "ignore_signal") {
       pendingSignals.delete(user.id);
-      await reply(lang === "en" ? "Signal skipped." : "Сигнал пропущен.");
+      await reply(signalSkippedText(lang), { parse_mode: "HTML" });
+      return;
+    }
+    if (action === "confirm_menu") {
+      const on = Boolean((user as { confirmBeforeOpen?: boolean }).confirmBeforeOpen);
+      const text = lang === "en"
+        ? `🤖 <b>How trades are opened</b>\n\nCurrent: ${on ? "Ask me first" : "Automatic"}\n\n🤖 Automatic — the bot opens after risk check.\n👤 Confirm — you get a signal and tap Open.`
+        : `🤖 <b>Как открывать сделки</b>\n\nСейчас: ${on ? "С подтверждением" : "Автоматически"}\n\n🤖 Автоматический — бот сам открывает после проверки риска.\n👤 С подтверждением — сначала сигнал, сделка только после вашей кнопки.`;
+      const kb = new InlineKeyboard()
+        .text(lang === "en" ? "🤖 Automatic" : "🤖 Автоматический", "confirm:off")
+        .row()
+        .text(lang === "en" ? "👤 Ask me first" : "👤 С подтверждением", "confirm:on");
+      navRow(kb.row(), lang, "settings");
+      await reply(text, { parse_mode: "HTML", reply_markup: kb });
+      return;
+    }
+    if (action === "confirm:on" || action === "confirm:off") {
+      await prisma.user.update({ where: { id: user.id }, data: { confirmBeforeOpen: action === "confirm:on" } });
+      await reply(
+        action === "confirm:on"
+          ? lang === "en" ? "Signals will wait for your confirmation." : "Сигналы будут ждать вашего подтверждения."
+          : lang === "en" ? "The bot will open trades automatically after a risk check." : "Бот будет открывать сделки автоматически после проверки риска."
+      );
       return;
     }
     if (action === "status" || action === "status_tech") {

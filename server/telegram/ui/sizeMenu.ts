@@ -12,6 +12,8 @@ export function sizeSettingsScreen(
     maxLeverage: number;
     maxNotionalUsdt: number;
     fixedNotionalUsdt: number;
+    maxPositionSizePct?: number;
+    maxExposurePct?: number;
   }
 ) {
   const mode = r.positionSizeMode === "FIXED" ? "FIXED" : r.positionSizeMode === "CAPPED" ? "CAPPED" : "AUTO";
@@ -24,8 +26,8 @@ export function sizeSettingsScreen(
   const cap = r.maxNotionalUsdt > 0 ? price(r.maxNotionalUsdt) : lang === "en" ? "no extra cap" : "без доп. лимита";
   const text =
     lang === "en"
-      ? `💰 <b>Trade size</b>\n\n🤖 Mode: ${modeLabel}\n\n🛡 Risk per trade: ${r.riskPerTradePct}%\n⚡ Max leverage: x${r.maxLeverage}\n💼 Max position size: ${cap}\n📌 Fixed size (if used): ${price(r.fixedNotionalUsdt)}\n\nThe bot does not always open $100. It calculates size from your balance, risk % and Stop Loss distance.`
-      : `💰 <b>Размер сделок</b>\n\n🤖 Режим: ${modeLabel}\n\n🛡 Риск на сделку: ${r.riskPerTradePct}%\n⚡ Максимальное плечо: x${r.maxLeverage}\n💼 Максимальный размер позиции: ${cap}\n📌 Фиксированный размер (если включён): ${price(r.fixedNotionalUsdt)}\n\nБот открывает не всегда на $100. Сумма считается из баланса, процента риска и расстояния до Stop Loss.`;
+      ? `💰 <b>Trade size</b>\n\n🤖 Mode: ${modeLabel}\n\n🛡 Risk per trade: ${r.riskPerTradePct}%\n💵 Max margin used: ${r.maxPositionSizePct ?? 10}% of balance\n💼 Max position size: ${cap}\n📊 Max total exposure: ${r.maxExposurePct ?? 30}%\n⚡ Max leverage: x${r.maxLeverage}\n📌 Fixed size (if used): ${price(r.fixedNotionalUsdt)}\n\nThese are three different limits:\n• margin = your funds in the trade\n• position size = market value\n• exposure = all open trades together`
+      : `💰 <b>Размер сделок</b>\n\n🤖 Режим: ${modeLabel}\n\n🛡 Риск на сделку: ${r.riskPerTradePct}%\n💵 Максимально используемая маржа: ${r.maxPositionSizePct ?? 10}% баланса\n💼 Максимальный размер позиции: ${cap}\n📊 Максимальная общая экспозиция: ${r.maxExposurePct ?? 30}%\n⚡ Максимальное плечо: x${r.maxLeverage}\n📌 Фиксированный размер (если включён): ${price(r.fixedNotionalUsdt)}\n\nЭто три разные вещи:\n• маржа — ваши средства в сделке\n• размер позиции — стоимость на рынке\n• экспозиция — все открытые сделки вместе`;
   const kb = new InlineKeyboard()
     .text(lang === "en" ? "🤖 Automatic" : "🤖 Автоматический", "size_mode:AUTO")
     .row()

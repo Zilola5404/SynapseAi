@@ -10,6 +10,7 @@ export interface TelegramMessagePayload {
   chatId: string;
   message: string;
   parseMode?: "HTML" | "Markdown";
+  replyMarkup?: unknown;
 }
 
 export async function sendTelegramMessage({
@@ -17,6 +18,7 @@ export async function sendTelegramMessage({
   chatId,
   message,
   parseMode = "HTML",
+  replyMarkup,
 }: TelegramMessagePayload): Promise<{ success: boolean; messageId?: number; error?: string }> {
   try {
     const cleanToken = botToken?.trim();
@@ -35,6 +37,7 @@ export async function sendTelegramMessage({
         text: message,
         parse_mode: parseMode,
         disable_web_page_preview: true,
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
       }),
     });
 

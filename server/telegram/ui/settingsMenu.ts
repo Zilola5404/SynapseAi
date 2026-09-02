@@ -12,6 +12,8 @@ export function settingsScreen(lang: LocaleCode) {
     .text(lang === "en" ? "💰 Trade size" : "💰 Размер торговли", "size")
     .row()
     .text(lang === "en" ? "🔔 Notifications" : "🔔 Уведомления", "notify")
+    .text(lang === "en" ? "🤖 Auto / confirm" : "🤖 Авто / подтверждение", "confirm_menu")
+    .row()
     .text(lang === "en" ? "📊 Trading pairs" : "📊 Торговые пары", "pairs")
     .row()
     .text(lang === "en" ? "🔐 API connection" : "🔐 API подключение", "keys")

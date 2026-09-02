@@ -3,6 +3,7 @@ import { closeReasonLabel, friendlyError, money, sideLabel } from "./ui/format.j
 import { tradeClosedMessage, tradeOpenedMessage } from "./messages.js";
 import { matchReply } from "./ui/keyboards.js";
 import { sizeSettingsScreen, sizeWhyScreen } from "./ui/sizeMenu.js";
+import { signalOfferText } from "./ui/signalMenu.js";
 
 assert.equal(sideLabel("LONG", "ru"), "Покупка 📈");
 assert.equal(sideLabel("SHORT", "ru"), "Продажа 📉");
@@ -27,7 +28,7 @@ assert.match(
   }),
   /Размер сделки: \$100\.00[\s\S]*Использовано средств: \$50\.00[\s\S]*Плечо: x2[\s\S]*Максимальный риск по сделке: \$5\.00/
 );
-assert.match(tradeClosedMessage("ru", { symbol: "BTCUSDT", pnl: -7.54, fees: 1.2, reason: "STOP_LOSS" }), /Сработал Stop Loss/);
+assert.match(tradeClosedMessage("ru", { symbol: "BTCUSDT", pnl: 18, fees: 2, reason: "TAKE_PROFIT", grossPnl: 20, entryFee: 1, exitFee: 1 }), /Чистая прибыль[\s\S]*Комиссия входа[\s\S]*Комиссия выхода/);
 assert.equal(matchReply("▶️ Старт", "ru"), "start_bot");
 assert.equal(matchReply("❓ Помощь", "ru"), "help");
 assert.match(sizeSettingsScreen("ru", {
@@ -54,5 +55,24 @@ assert.match(sizeWhyScreen("ru", {
   leverage: 2,
   maxLossUsdt: 6,
 }).text, /РАСЧЁТ РАЗМЕРА СДЕЛКИ[\s\S]*Итоговый размер:[\s\S]*\$300\.00/);
+assert.match(
+  signalOfferText("ru", {
+    symbol: "BTCUSDT",
+    direction: "LONG",
+    confidence: 78,
+    entry: 68500,
+    sl: 67800,
+    tp: 69900,
+    riskReward: 2,
+    factors: [{ ok: true, textRu: "Цена выше основной трендовой линии", textEn: "Price is above the main trend line" }],
+    sizeUsdt: 2500,
+    marginUsdt: 833,
+    leverage: 3,
+    maxRiskUsdt: 50,
+    potentialProfitUsdt: 100,
+    expiresAt: new Date(Date.now() + 60_000),
+  }, "confirm"),
+  /НАЙДЕН ТОРГОВЫЙ СИГНАЛ[\s\S]*ПОКУПКА[\s\S]*не гарантия прибыли[\s\S]*Предлагаемый размер/
+);
 
 console.log("  PASS  Telegram UX: Russian copy, friendly errors, no raw stack traces");
