@@ -7,3 +7,4 @@ coverage/
 .env*
 !.env.example
 .synapse-telegram.lock
+data/klines/

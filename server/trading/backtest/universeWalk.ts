@@ -1,11 +1,15 @@
 import { toSnapshot } from "../../market/TechnicalAnalysis.js";
-import { fetchKlinesPaged } from "../../market/klinesPaged.js";
-import { strategyEngine } from "../strategy/StrategyEngine.js";
-import { TAKER_FEE, SLIPPAGE } from "../execution/ExecutionProvider.js";
-import { candlesAtOrBefore, threeWaySplit } from "./mtf.js";
+import { loadFundingCached, loadKlinesCached } from "../../market/klinesPaged.js";
+import { logger } from "../../logger.js";
+import {
+  decisionToSignal,
+  evaluateIntelligence,
+} from "../intelligence/TradingIntelligenceEngine.js";
 import { SCAN_UNIVERSE } from "../intelligence/config.js";
 import type { BinanceCandle } from "../../binance.js";
-import type { StrategySignal } from "../types.js";
+import { BACKTEST, DAY_MS, INTERVAL_MS } from "./config.js";
+import { simulateFill, type ExitReason, type FundingPoint } from "./fillModel.js";
+import { closedWindow, indexRangeForTime, rollingWalkForwardWindows, type WalkWindow } from "./mtf.js";
 
 export const FACTOR_KEYS = ["btc", "h4", "structure", "level", "liquidity", "bos", "volume", "rr"] as const;
 export type FactorKey = (typeof FACTOR_KEYS)[number];
@@ -14,12 +18,73 @@ export type WalkTrade = {
   symbol: string;
   t: number;
   grade: "A+" | "A" | "B" | string;
+  direction: "LONG" | "SHORT";
   pnl: number;
   fees: number;
+  funding: number;
   rMultiple: number;
-  exit: "SL" | "TP" | "TIME";
+  resultR: number;
+  exit: ExitReason;
   bucket: "train" | "validation" | "oos";
+  windowId: number;
   factors: Record<string, boolean>;
+  entry: number;
+  sl: number;
+  tp1: number;
+  tp2: number;
+  tp3: number | null;
+  exitPrice: number;
+  timeInTradeMs: number;
+  maeR: number;
+  mfeR: number;
+  ambiguousSlTpBar: boolean;
+  tpHits: number;
+  confluenceScore: number;
+  marketRegime: string;
+  btcContext: string;
+  h4Trend: string;
+  rr: number;
+};
+
+export type FeatureRow = {
+  timestamp: number;
+  symbol: string;
+  marketRegime: string;
+  btcContext: string;
+  h4Trend: string;
+  structure: boolean;
+  level: boolean;
+  liquidity: boolean;
+  bos: boolean;
+  volume: boolean;
+  rr: number;
+  confluenceScore: number;
+  grade: string;
+  direction: string;
+  resultR: number;
+};
+
+export type BarEvent = {
+  t: number;
+  outcome: "snapshot_skip" | "rejected" | "signal" | "fill_reject" | "opened";
+  reason?: string;
+};
+
+export type WindowDiag = {
+  windowId: number;
+  bucket: WalkTrade["bucket"];
+  windowStart: string;
+  windowEnd: string;
+  symbol: string;
+  candlesLoaded: number;
+  candlesProcessed: number;
+  snapshotSkip: number;
+  signalsGenerated: number;
+  signalsRejected: number;
+  fillRejected: number;
+  tradesOpened: number;
+  tradesClosed: number;
+  rejectReasons: Record<string, number>;
 };
 
 export type SymbolPack = {
@@ -32,77 +97,60 @@ export type SymbolPack = {
   btcD1: BinanceCandle[];
   btcH4: BinanceCandle[];
   btcH1: BinanceCandle[];
+  funding: FundingPoint[];
 };
 
-export async function loadSymbolPack(symbol: string): Promise<SymbolPack> {
-  const [d1, h4, h1, m15, m5, btcD1, btcH4, btcH1] = await Promise.all([
-    fetchKlinesPaged(symbol, "1d", 400),
-    fetchKlinesPaged(symbol, "4h", 500),
-    fetchKlinesPaged(symbol, "1h", 1000),
-    fetchKlinesPaged(symbol, "15m", 1500),
-    fetchKlinesPaged(symbol, "5m", 4500),
-    symbol === "BTCUSDT"
-      ? Promise.resolve([])
-      : fetchKlinesPaged("BTCUSDT", "1d", 400),
-    symbol === "BTCUSDT"
-      ? Promise.resolve([])
-      : fetchKlinesPaged("BTCUSDT", "4h", 500),
-    symbol === "BTCUSDT"
-      ? Promise.resolve([])
-      : fetchKlinesPaged("BTCUSDT", "1h", 1000),
-  ]);
-  return {
-    symbol,
-    d1,
-    h4,
-    h1,
-    m15,
-    m5,
-    btcD1: symbol === "BTCUSDT" ? d1 : btcD1,
-    btcH4: symbol === "BTCUSDT" ? h4 : btcH4,
-    btcH1: symbol === "BTCUSDT" ? h1 : btcH1,
-  };
+function emptyDiag(partial: Omit<WindowDiag, "rejectReasons"> & { rejectReasons?: Record<string, number> }): WindowDiag {
+  return { ...partial, rejectReasons: partial.rejectReasons || {} };
 }
 
-function simulateFill(m5: BinanceCandle[], i: number, signal: StrategySignal) {
-  const entry = m5[i].close * (1 + (signal.direction === "LONG" ? SLIPPAGE : -SLIPPAGE));
-  const risk = Math.abs(entry - signal.stopLoss);
-  if (risk <= 0) return null;
-  const qtyUsd = (10000 * 0.005 * entry) / risk;
-  const qty = qtyUsd / entry;
-  let exit = m5[i + 1]?.close || entry;
-  let reason: "SL" | "TP" | "TIME" = "TIME";
-  for (let j = i + 1; j < Math.min(i + 24, m5.length); j++) {
-    if (signal.direction === "LONG") {
-      if (m5[j].low <= signal.stopLoss) {
-        exit = signal.stopLoss;
-        reason = "SL";
-        break;
-      }
-      if (m5[j].high >= signal.takeProfit) {
-        exit = signal.takeProfit;
-        reason = "TP";
-        break;
-      }
-    } else {
-      if (m5[j].high >= signal.stopLoss) {
-        exit = signal.stopLoss;
-        reason = "SL";
-        break;
-      }
-      if (m5[j].low <= signal.takeProfit) {
-        exit = signal.takeProfit;
-        reason = "TP";
-        break;
-      }
-    }
-    exit = m5[j].close;
-  }
-  const dir = signal.direction === "LONG" ? 1 : -1;
-  const fees = entry * qty * TAKER_FEE + exit * qty * TAKER_FEE;
-  const pnl = dir * (exit - entry) * qty - fees;
-  const rMultiple = dir * (exit - entry) / risk;
-  return { pnl, fees, rMultiple, reason, qty };
+function bump(map: Record<string, number>, key: string) {
+  map[key] = (map[key] || 0) + 1;
+}
+
+export function classifyVeto(textEn: string, textRu: string) {
+  const t = `${textEn} ${textRu}`.toLowerCase();
+  if (t.includes("not enough market data") || t.includes("недостаточно рыночных")) return "NO_DATA";
+  if (t.includes("no trend pullback") || t.includes("нет сетапа")) return "NO_SETUP";
+  if (t.includes("confluence") || t.includes("класс")) return "LOW_CONFLUENCE";
+  if (t.includes("volatility") || t.includes("волатил") || t.includes("ranging") || t.includes("режим")) return "REGIME";
+  if (t.includes("too close") || t.includes("нет места") || t.includes("no room")) return "NO_ROOM_FOR_TP";
+  if (t.includes("risk/reward")) return "LOW_RR";
+  if (t.includes("altcoin") || t.includes("альтам") || t.includes("альту")) return "BTC_BLOCKS_ALT_LONG";
+  return "OTHER";
+}
+
+export async function loadSymbolPack(
+  symbol: string,
+  startMs: number,
+  endMs: number,
+  btc?: Pick<SymbolPack, "btcD1" | "btcH4" | "btcH1">
+): Promise<SymbolPack> {
+  const d1Start = startMs - 400 * DAY_MS;
+  const extra = (interval: string) => startMs - BACKTEST.lookback * (INTERVAL_MS[interval] || INTERVAL_MS["5m"]);
+  const [d1, h4, h1, m15, m5, funding] = await Promise.all([
+    loadKlinesCached(symbol, "1d", d1Start, endMs),
+    loadKlinesCached(symbol, "4h", extra("4h"), endMs),
+    loadKlinesCached(symbol, "1h", extra("1h"), endMs),
+    loadKlinesCached(symbol, "15m", extra("15m"), endMs),
+    loadKlinesCached(symbol, "5m", extra("5m"), endMs),
+    loadFundingCached(symbol, startMs - DAY_MS, endMs),
+  ]);
+  const btcD1 = symbol === "BTCUSDT" ? d1 : btc?.btcD1 || [];
+  const btcH4 = symbol === "BTCUSDT" ? h4 : btc?.btcH4 || [];
+  const btcH1 = symbol === "BTCUSDT" ? h1 : btc?.btcH1 || [];
+  return { symbol, d1, h4, h1, m15, m5, btcD1, btcH4, btcH1, funding };
+}
+
+export async function loadBtcContext(startMs: number, endMs: number) {
+  const d1Start = startMs - 400 * DAY_MS;
+  const extra = (interval: string) => startMs - BACKTEST.lookback * (INTERVAL_MS[interval] || INTERVAL_MS["1h"]);
+  const [btcD1, btcH4, btcH1] = await Promise.all([
+    loadKlinesCached("BTCUSDT", "1d", d1Start, endMs),
+    loadKlinesCached("BTCUSDT", "4h", extra("4h"), endMs),
+    loadKlinesCached("BTCUSDT", "1h", extra("1h"), endMs),
+  ]);
+  return { btcD1, btcH4, btcH1 };
 }
 
 export function walkSlice(
@@ -110,23 +158,37 @@ export function walkSlice(
   startIndex: number,
   endIndex: number,
   bucket: WalkTrade["bucket"],
-  step = 6
+  step = BACKTEST.step,
+  windowId = 0,
+  diag?: WindowDiag,
+  events?: BarEvent[]
 ): WalkTrade[] {
   const trades: WalkTrade[] = [];
-  for (let i = startIndex; i < endIndex - 5; i += step) {
+  const reasons = diag?.rejectReasons || {};
+  const lookback = BACKTEST.lookback;
+  for (let i = startIndex; i < endIndex && i < pack.m5.length - 1; ) {
     const t = pack.m5[i].closeTime || pack.m5[i].openTime;
+    if (diag) diag.candlesProcessed += 1;
+    if ((i - startIndex) % (step * 800) === 0) {
+      console.error(`[backtest] ${pack.symbol} ${new Date(t).toISOString()}`);
+    }
     const slice = {
-      d1: candlesAtOrBefore(pack.d1, t),
-      h4: candlesAtOrBefore(pack.h4, t),
-      h1: candlesAtOrBefore(pack.h1, t),
-      m15: candlesAtOrBefore(pack.m15, t),
-      m5: pack.m5.slice(0, i + 1),
+      d1: closedWindow(pack.d1, t, lookback),
+      h4: closedWindow(pack.h4, t, lookback),
+      h1: closedWindow(pack.h1, t, lookback),
+      m15: closedWindow(pack.m15, t, lookback),
+      m5: closedWindow(pack.m5, t, lookback),
     };
     const h1 = toSnapshot(pack.symbol, slice.h1, "1H");
     const m15 = toSnapshot(pack.symbol, slice.m15, "15M");
     const m5 = toSnapshot(pack.symbol, slice.m5, "5M");
-    if (!h1 || !m15 || !m5) continue;
-    const decision = strategyEngine.analyzeBundle({
+    if (!h1 || !m15 || !m5) {
+      if (diag) diag.snapshotSkip += 1;
+      events?.push({ t, outcome: "snapshot_skip" });
+      i += step;
+      continue;
+    }
+    const intel = evaluateIntelligence({
       symbol: pack.symbol,
       snapshots: {
         d1: toSnapshot(pack.symbol, slice.d1, "1D"),
@@ -137,57 +199,249 @@ export function walkSlice(
       },
       candles: slice,
       btc: {
-        d1: toSnapshot("BTCUSDT", candlesAtOrBefore(pack.btcD1, t), "1D"),
-        h4: toSnapshot("BTCUSDT", candlesAtOrBefore(pack.btcH4, t), "4H"),
-        h1: toSnapshot("BTCUSDT", candlesAtOrBefore(pack.btcH1, t), "1H"),
+        d1: toSnapshot("BTCUSDT", closedWindow(pack.btcD1, t, lookback), "1D"),
+        h4: toSnapshot("BTCUSDT", closedWindow(pack.btcH4, t, lookback), "4H"),
+        h1: toSnapshot("BTCUSDT", closedWindow(pack.btcH1, t, lookback), "1H"),
       },
     });
+    const decision = decisionToSignal(intel);
     const signal = decision.signal;
-    if (!signal) continue;
-    const fill = simulateFill(pack.m5, i, signal);
-    if (!fill) continue;
+    if (!signal) {
+      if (diag) diag.signalsRejected += 1;
+      const veto = intel.vetoes[0] || decision.vetoes[0];
+      const reason = veto ? classifyVeto(veto.textEn, veto.textRu) : "NO_SIGNAL";
+      bump(reasons, reason);
+      events?.push({ t, outcome: "rejected", reason });
+      i += step;
+      continue;
+    }
+    if (diag) diag.signalsGenerated += 1;
+    events?.push({ t, outcome: "signal" });
+    const fill = simulateFill(pack.m5, i, signal, pack.funding);
+    if (!fill) {
+      if (diag) diag.fillRejected += 1;
+      bump(reasons, "FILL_REJECTED");
+      events?.push({ t, outcome: "fill_reject", reason: "FILL_REJECTED" });
+      i += step;
+      continue;
+    }
     const factors: Record<string, boolean> = {};
     for (const line of signal.scoreLines || []) {
       factors[line.key] = Boolean(line.ok);
     }
+    if (diag) {
+      diag.tradesOpened += 1;
+      diag.tradesClosed += 1;
+    }
+    events?.push({ t, outcome: "opened" });
     trades.push({
       symbol: pack.symbol,
       t,
       grade: signal.setupGrade || "A",
+      direction: signal.direction,
       pnl: fill.pnl,
       fees: fill.fees,
-      rMultiple: fill.rMultiple,
-      exit: fill.reason,
+      funding: fill.funding,
+      rMultiple: fill.resultR,
+      resultR: fill.resultR,
+      exit: fill.exitReason,
       bucket,
+      windowId,
       factors,
+      entry: fill.entry,
+      sl: fill.sl,
+      tp1: fill.tp1,
+      tp2: fill.tp2,
+      tp3: fill.tp3,
+      exitPrice: fill.exit,
+      timeInTradeMs: fill.timeInTradeMs,
+      maeR: fill.maeR,
+      mfeR: fill.mfeR,
+      ambiguousSlTpBar: fill.ambiguousSlTpBar,
+      tpHits: fill.tpHits,
+      confluenceScore: signal.confluenceScore || signal.qualityScore,
+      marketRegime: intel.regime.regime,
+      btcContext: intel.context.marketMode,
+      h4Trend: intel.context.btcTrend4H,
+      rr: signal.riskReward,
     });
-    i += 8;
+    i = Math.max(i + step, fill.exitIndex + 1);
   }
+  if (diag) diag.rejectReasons = reasons;
   return trades;
 }
 
-export function walkPack(pack: SymbolPack, step = 6): WalkTrade[] {
-  const start = 120;
+export function featureFromTrade(t: WalkTrade): FeatureRow {
+  return {
+    timestamp: t.t,
+    symbol: t.symbol,
+    marketRegime: t.marketRegime,
+    btcContext: t.btcContext,
+    h4Trend: t.h4Trend,
+    structure: Boolean(t.factors.structure),
+    level: Boolean(t.factors.level),
+    liquidity: Boolean(t.factors.liquidity),
+    bos: Boolean(t.factors.bos),
+    volume: Boolean(t.factors.volume),
+    rr: t.rr,
+    confluenceScore: t.confluenceScore,
+    grade: t.grade,
+    direction: t.direction,
+    resultR: t.resultR,
+  };
+}
+
+function inRange(t: number, start: number, end: number) {
+  return t >= start && t < end;
+}
+
+function tagTrade(trade: WalkTrade, windows: WalkWindow[]): WalkTrade {
+  if (!windows.length) return trade;
+  for (const w of windows) {
+    if (inRange(trade.t, w.oosStart, w.oosEnd)) return { ...trade, bucket: "oos", windowId: w.id };
+  }
+  for (const w of windows) {
+    if (inRange(trade.t, w.valStart, w.valEnd)) return { ...trade, bucket: "validation", windowId: w.id };
+  }
+  for (const w of windows) {
+    if (inRange(trade.t, w.trainStart, w.trainEnd)) return { ...trade, bucket: "train", windowId: w.id };
+  }
+  return trade;
+}
+
+function diagFromEvents(
+  pack: SymbolPack,
+  w: WalkWindow,
+  bucket: WalkTrade["bucket"],
+  start: number,
+  end: number,
+  events: BarEvent[],
+  trades: WalkTrade[]
+): WindowDiag {
+  const slice = events.filter((e) => inRange(e.t, start, end));
+  const reasons: Record<string, number> = {};
+  for (const e of slice) {
+    if (e.outcome === "rejected" && e.reason) bump(reasons, e.reason);
+  }
+  const opened = trades.filter((t) => inRange(t.t, start, end)).length;
+  return emptyDiag({
+    windowId: w.id,
+    bucket,
+    windowStart: new Date(start).toISOString(),
+    windowEnd: new Date(end).toISOString(),
+    symbol: pack.symbol,
+    candlesLoaded: pack.m5.length,
+    candlesProcessed: slice.length,
+    snapshotSkip: slice.filter((e) => e.outcome === "snapshot_skip").length,
+    signalsGenerated: slice.filter((e) => e.outcome === "signal" || e.outcome === "opened" || e.outcome === "fill_reject").length,
+    signalsRejected: slice.filter((e) => e.outcome === "rejected").length,
+    fillRejected: slice.filter((e) => e.outcome === "fill_reject").length,
+    tradesOpened: opened,
+    tradesClosed: opened,
+    rejectReasons: reasons,
+  });
+}
+
+export function walkPackWindows(pack: SymbolPack, windows: WalkWindow[], step = BACKTEST.step) {
+  const usable = indexRangeForTime(
+    pack.m5,
+    windows[0]?.trainStart || pack.m5[0]?.openTime || 0,
+    windows[windows.length - 1]?.oosEnd || pack.m5[pack.m5.length - 1]?.closeTime || 0
+  );
+  const events: BarEvent[] = [];
+  const raw =
+    usable.start >= 0 && usable.end > usable.start
+      ? walkSlice(pack, usable.start, usable.end + 1, "train", step, 0, undefined, events)
+      : [];
+  const trades = raw.map((t) => tagTrade(t, windows));
+  const diags: WindowDiag[] = [];
+  for (const w of windows) {
+    const buckets: Array<{ bucket: WalkTrade["bucket"]; start: number; end: number }> = [
+      { bucket: "train", start: w.trainStart, end: w.trainEnd },
+      { bucket: "validation", start: w.valStart, end: w.valEnd },
+      { bucket: "oos", start: w.oosStart, end: w.oosEnd },
+    ];
+    for (const b of buckets) {
+      diags.push(diagFromEvents(pack, w, b.bucket, b.start, b.end, events, trades));
+    }
+  }
+  return { trades, diags };
+}
+
+/** Legacy 50/25/25 on available 5m body — used only if walk-forward cannot fit. */
+export function walkPack(pack: SymbolPack, step = BACKTEST.step): WalkTrade[] {
+  const start = Math.min(BACKTEST.lookback, Math.max(80, pack.m5.length - 40));
   if (pack.m5.length < start + 40) return [];
-  const body = pack.m5.slice(start);
-  const split = threeWaySplit(body, 0.5, 0.25);
-  const trainEnd = start + split.train.length;
-  const valEnd = trainEnd + split.validation.length;
+  const n = pack.m5.length - start;
+  const trainEnd = start + Math.floor(n * 0.5);
+  const valEnd = start + Math.floor(n * 0.75);
   return [
-    ...walkSlice(pack, start, trainEnd, "train", step),
-    ...walkSlice(pack, trainEnd, valEnd, "validation", step),
-    ...walkSlice(pack, valEnd, pack.m5.length, "oos", step),
+    ...walkSlice(pack, start, trainEnd, "train", step, 0),
+    ...walkSlice(pack, trainEnd, valEnd, "validation", step, 0),
+    ...walkSlice(pack, valEnd, pack.m5.length, "oos", step, 0),
   ];
 }
 
-export async function runUniverseWalk(symbols: readonly string[] = SCAN_UNIVERSE, step = 6) {
+export async function runUniverseWalk(
+  symbols: readonly string[] = SCAN_UNIVERSE,
+  step = BACKTEST.step,
+  months = BACKTEST.historyMonths
+) {
+  logger.level = "error";
+  const endMs = Date.now();
+  const startMs = endMs - months * 30.4375 * DAY_MS;
+  const btc = await loadBtcContext(startMs, endMs);
   const all: WalkTrade[] = [];
+  const diags: WindowDiag[] = [];
   const perSymbol: Record<string, number> = {};
+  const loaded: Record<string, { m5: number; first: string; last: string; funding: number }> = {};
+  let windows: WalkWindow[] = [];
+
   for (const symbol of symbols) {
-    const pack = await loadSymbolPack(symbol);
-    const rows = walkPack(pack, step);
-    perSymbol[symbol] = rows.length;
-    all.push(...rows);
+    const pack = await loadSymbolPack(symbol, startMs, endMs, symbol === "BTCUSDT" ? undefined : btc);
+    const first = pack.m5[0]?.openTime || startMs;
+    const last = pack.m5[pack.m5.length - 1]?.closeTime || endMs;
+    loaded[symbol] = {
+      m5: pack.m5.length,
+      first: new Date(first).toISOString(),
+      last: new Date(last).toISOString(),
+      funding: pack.funding.length,
+    };
+    if (!windows.length) {
+      const usableStart = first + BACKTEST.lookback * INTERVAL_MS["5m"];
+      windows = rollingWalkForwardWindows(usableStart, last, BACKTEST);
+    }
+    const walked = windows.length
+      ? walkPackWindows(pack, windows, step)
+      : { trades: walkPack(pack, step), diags: [] as WindowDiag[] };
+    perSymbol[symbol] = walked.trades.length;
+    all.push(...walked.trades);
+    diags.push(...walked.diags);
   }
-  return { trades: all, perSymbol, step, noFutureData: true, split: "50/25/25 by 5m time" };
+
+  const historyDays = Math.min(
+    ...Object.values(loaded).map((row) => {
+      const a = Date.parse(row.first);
+      const b = Date.parse(row.last);
+      return (b - a) / DAY_MS;
+    })
+  );
+
+  return {
+    trades: all,
+    diags,
+    perSymbol,
+    loaded,
+    windows,
+    step,
+    months,
+    historyDays,
+    startMs,
+    endMs,
+    noFutureData: true,
+    split: windows.length
+      ? `rolling walk-forward train ${BACKTEST.trainDays}d / val ${BACKTEST.valDays}d / oos ${BACKTEST.oosDays}d shift ${BACKTEST.shiftDays}d`
+      : "fallback 50/25/25 — history too short for 6/2/2 walk-forward",
+    fundingIncluded: Object.values(loaded).some((r) => r.funding > 0),
+  };
 }

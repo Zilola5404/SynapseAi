@@ -1,198 +1,54 @@
 {
-  "started": "2026-09-02T20:10:26.186Z",
-  "perSymbol": {
-    "BTCUSDT": 9,
-    "ETHUSDT": 15,
-    "SOLUSDT": 6,
-    "BNBUSDT": 6,
-    "XRPUSDT": 3,
-    "ADAUSDT": 0
-  },
+  "started": "2026-09-02T20:34:01.820Z",
+  "historyDays": 549.6076388773148,
+  "windows": 5,
   "counts": {
-    "all": 39,
-    "train": 33,
-    "validation": 6,
-    "oos": 0,
-    "aPlus": 1,
-    "a": 38
+    "all": 141,
+    "train": 59,
+    "validation": 19,
+    "oos": 63,
+    "aPlus": 3,
+    "a": 138
   },
-  "oos": {
-    "A+": {
-      "grade": "A+",
-      "trades": 0,
-      "wins": 0,
-      "losses": 0,
-      "winRate": 0,
-      "avgWin": 0,
-      "avgLoss": 0,
-      "profitFactor": 0,
-      "expectancy": 0,
-      "maxDrawdown": 0,
-      "averageR": 0,
-      "netPnl": 0,
-      "fees": 0
-    },
-    "A": {
-      "grade": "A",
-      "trades": 0,
-      "wins": 0,
-      "losses": 0,
-      "winRate": 0,
-      "avgWin": 0,
-      "avgLoss": 0,
-      "profitFactor": 0,
-      "expectancy": 0,
-      "maxDrawdown": 0,
-      "averageR": 0,
-      "netPnl": 0,
-      "fees": 0
-    },
-    "B": {
-      "grade": "B",
-      "trades": 0,
-      "wins": 0,
-      "losses": 0,
-      "winRate": 0,
-      "avgWin": 0,
-      "avgLoss": 0,
-      "profitFactor": 0,
-      "expectancy": 0,
-      "maxDrawdown": 0,
-      "averageR": 0,
-      "netPnl": 0,
-      "fees": 0
-    },
-    "sampleTooSmall": true
+  "gate": {
+    "aPlus": 3,
+    "a": 138,
+    "oos": 63,
+    "historyDays": 549.6076388773148,
+    "walkForwardWindows": 5,
+    "issues": [
+      "A+_INSUFFICIENT_SAMPLE"
+    ],
+    "sampleLabel": "INSUFFICIENT_SAMPLE",
+    "strategyPass": false
   },
-  "all": {
-    "A+": {
-      "grade": "A+",
-      "trades": 1,
-      "wins": 1,
-      "losses": 0,
-      "winRate": 1,
-      "avgWin": 34.02486701665832,
-      "avgLoss": 0,
-      "profitFactor": null,
-      "expectancy": 34.02486701665832,
-      "maxDrawdown": 0,
-      "averageR": 0.7321682495037136,
-      "netPnl": 34.02486701665832,
-      "fees": 2.5835454585273605
-    },
-    "A": {
-      "grade": "A",
-      "trades": 38,
-      "wins": 22,
-      "losses": 16,
-      "winRate": 0.5789473684210527,
-      "avgWin": 23.984704134600214,
-      "avgLoss": -15.845651073601006,
-      "profitFactor": 2.081263056462132,
-      "expectancy": 7.214028257462856,
-      "maxDrawdown": -138.480471140319,
-      "averageR": 0.19932322511893275,
-      "netPnl": 274.13307378358854,
-      "fees": 104.58105394238378
-    },
-    "B": {
-      "grade": "B",
-      "trades": 0,
-      "wins": 0,
-      "losses": 0,
-      "winRate": 0,
-      "avgWin": 0,
-      "avgLoss": 0,
-      "profitFactor": 0,
-      "expectancy": 0,
-      "maxDrawdown": 0,
-      "averageR": 0,
-      "netPnl": 0,
-      "fees": 0
-    },
-    "sampleTooSmall": false
+  "fundingIncluded": true,
+  "allR": {
+    "trades": 141,
+    "totalR": -3.085482399999997,
+    "averageR": -0.0218828539007092,
+    "expectancyR": -0.0218828539007092,
+    "medianR": -0.33524724,
+    "winRate": 0.425531914893617,
+    "profitFactor": 0.9514293253911464,
+    "maxDrawdownR": -11.93382282,
+    "maxConsecutiveLosses": 7,
+    "averageWinR": 1.007335689,
+    "averageLossR": -0.7842669597530865,
+    "netUsdt": -154.27411999999987
   },
-  "trainCalibration": [
-    {
-      "key": "btc",
-      "onTrades": 33,
-      "offTrades": 0,
-      "expectancyOn": 6.478625801071772,
-      "expectancyOff": 0,
-      "profitFactorOn": 2.27060847945894,
-      "profitFactorOff": 0,
-      "improvesExpectancy": false
-    },
-    {
-      "key": "h4",
-      "onTrades": 33,
-      "offTrades": 0,
-      "expectancyOn": 6.478625801071772,
-      "expectancyOff": 0,
-      "profitFactorOn": 2.27060847945894,
-      "profitFactorOff": 0,
-      "improvesExpectancy": false
-    },
-    {
-      "key": "structure",
-      "onTrades": 27,
-      "offTrades": 6,
-      "expectancyOn": 7.28091391933183,
-      "expectancyOff": 2.868329268901507,
-      "profitFactorOn": 2.353036992228224,
-      "profitFactorOff": 1.7492305260337189,
-      "improvesExpectancy": true
-    },
-    {
-      "key": "level",
-      "onTrades": 33,
-      "offTrades": 0,
-      "expectancyOn": 6.478625801071772,
-      "expectancyOff": 0,
-      "profitFactorOn": 2.27060847945894,
-      "profitFactorOff": 0,
-      "improvesExpectancy": false
-    },
-    {
-      "key": "liquidity",
-      "onTrades": 0,
-      "offTrades": 33,
-      "expectancyOn": 0,
-      "expectancyOff": 6.478625801071772,
-      "profitFactorOn": 0,
-      "profitFactorOff": 2.27060847945894,
-      "improvesExpectancy": false
-    },
-    {
-      "key": "bos",
-      "onTrades": 10,
-      "offTrades": 23,
-      "expectancyOn": 4.541549469624646,
-      "expectancyOff": 7.320832901700957,
-      "profitFactorOn": 2.4669659514491973,
-      "profitFactorOff": 2.2263341552077227,
-      "improvesExpectancy": false
-    },
-    {
-      "key": "volume",
-      "onTrades": 9,
-      "offTrades": 24,
-      "expectancyOn": 10.849465073456823,
-      "expectancyOff": 4.839561073927376,
-      "profitFactorOn": 2.753406539882006,
-      "profitFactorOff": 2.031772182839839,
-      "improvesExpectancy": true
-    },
-    {
-      "key": "rr",
-      "onTrades": 33,
-      "offTrades": 0,
-      "expectancyOn": 6.478625801071772,
-      "expectancyOff": 0,
-      "profitFactorOn": 2.27060847945894,
-      "profitFactorOff": 0,
-      "improvesExpectancy": false
-    }
-  ],
-  "aPlusBetter": false
+  "oosR": {
+    "trades": 63,
+    "totalR": 7.6697788000000005,
+    "averageR": 0.12174252063492064,
+    "expectancyR": 0.12174252063492064,
+    "medianR": -0.00489126,
+    "winRate": 0.49206349206349204,
+    "profitFactor": 1.3481699352197398,
+    "maxDrawdownR": -5.4320827000000005,
+    "maxConsecutiveLosses": 5,
+    "averageWinR": 0.9580198690322581,
+    "averageLossR": -0.688401160625,
+    "netUsdt": 383.48894
+  }
 }
