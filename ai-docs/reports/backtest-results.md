@@ -1,8 +1,6 @@
 # SYNAPSEAI BACKTEST RESULTS
 
-**Run:** 2026-09-02T20:34:01.820Z  
-**Hold in this file:** **24h TIME cap** (then-current harness). Canonical policy after 2026-09-03 exit-sensitivity is **NO_TIME_EXIT** — see `reports/exit-sensitivity.md` and `reports/strategy-validation.md`. Do not treat these TIME counts as live behavior.
-
+**Run:** 2026-09-03T22:28:32.298Z
 **Universe:** BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT, ADAUSDT
 **Timeframes:** 1D, 4H, 1H, 15m, 5m (walk on 5m, step=6)
 **History:** ~549.6 days (18 months requested)
@@ -21,108 +19,112 @@
 | Label | **INSUFFICIENT_SAMPLE** |
 | STRATEGY PASS | **NO** |
 | Issues | A+_INSUFFICIENT_SAMPLE |
-| A+ / A / OOS n | 3 / 138 / 63 |
+| A+ / A / OOS n | 3 / 105 / 51 |
 
 A single +USDT trade cannot pass the strategy. R metrics below.
 
 ## Loaded candles
 
-- BTCUSDT: 158287 × 5m from 2025-03-02T05:55:00.000Z to 2026-09-02T20:29:59.999Z, funding points 1647
-- ETHUSDT: 158287 × 5m from 2025-03-02T05:55:00.000Z to 2026-09-02T20:29:59.999Z, funding points 1647
-- SOLUSDT: 158287 × 5m from 2025-03-02T05:55:00.000Z to 2026-09-02T20:29:59.999Z, funding points 1647
-- BNBUSDT: 158287 × 5m from 2025-03-02T05:55:00.000Z to 2026-09-02T20:29:59.999Z, funding points 1647
-- XRPUSDT: 158287 × 5m from 2025-03-02T05:55:00.000Z to 2026-09-02T20:29:59.999Z, funding points 1647
-- ADAUSDT: 158287 × 5m from 2025-03-02T05:55:00.000Z to 2026-09-02T20:29:59.999Z, funding points 1647
+- BTCUSDT: 158287 × 5m from 2025-03-03T07:50:00.000Z to 2026-09-03T22:24:59.999Z, funding points 1646
+- ETHUSDT: 158287 × 5m from 2025-03-03T07:50:00.000Z to 2026-09-03T22:24:59.999Z, funding points 1646
+- SOLUSDT: 158287 × 5m from 2025-03-03T07:50:00.000Z to 2026-09-03T22:24:59.999Z, funding points 1646
+- BNBUSDT: 158287 × 5m from 2025-03-03T07:50:00.000Z to 2026-09-03T22:24:59.999Z, funding points 1646
+- XRPUSDT: 158287 × 5m from 2025-03-03T07:50:00.000Z to 2026-09-03T22:24:59.999Z, funding points 1646
+- ADAUSDT: 158287 × 5m from 2025-03-03T07:50:00.000Z to 2026-09-03T22:24:59.999Z, funding points 1646
 
 ### Train
 
-Trades: **59** (SL 28 / TP 12 / TIME 19)
+Trades: **44** (SL 27 / TP 17 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -5.738R |
-| Average / Expectancy R | -0.097R |
-| Median R | -0.477R |
-| Win rate | 35.6% |
-| Profit factor (R) | 0.82 |
-| Max drawdown R | -8.420R |
-| Max consecutive losses | 5 |
-| Average win R | +1.220R |
-| Average loss R | -0.825R |
-| Net USDT (secondary) | -286.88 |
+| Total R | +0.185R |
+| Average / Expectancy R | +0.004R |
+| Median R | -1.015R |
+| Win rate | 38.6% |
+| Profit factor (R) | 1.01 |
+| Max drawdown R | -7.404R |
+| Max consecutive losses | 6 |
+| Average hold | 98.01 h |
+| Average win R | +1.592R |
+| Average loss R | -0.996R |
+| Net USDT (secondary) | 9.24 |
 
 ### Validation
 
-Trades: **19** (SL 9 / TP 2 / TIME 8)
+Trades: **13** (SL 11 / TP 2 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -5.018R |
-| Average / Expectancy R | -0.264R |
-| Median R | -0.431R |
-| Win rate | 42.1% |
-| Profit factor (R) | 0.50 |
-| Max drawdown R | -5.018R |
-| Max consecutive losses | 5 |
-| Average win R | +0.639R |
-| Average loss R | -0.921R |
-| Net USDT (secondary) | -250.89 |
+| Total R | -7.777R |
+| Average / Expectancy R | -0.598R |
+| Median R | -1.022R |
+| Win rate | 15.4% |
+| Profit factor (R) | 0.30 |
+| Max drawdown R | -8.931R |
+| Max consecutive losses | 9 |
+| Average hold | 28.05 h |
+| Average win R | +1.643R |
+| Average loss R | -1.006R |
+| Net USDT (secondary) | -388.87 |
 
 ### Out-of-sample
 
-Trades: **63** (SL 19 / TP 13 / TIME 31)
+Trades: **51** (SL 30 / TP 21 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | +7.670R |
-| Average / Expectancy R | +0.122R |
-| Median R | -0.005R |
-| Win rate | 49.2% |
-| Profit factor (R) | 1.35 |
-| Max drawdown R | -5.432R |
-| Max consecutive losses | 5 |
-| Average win R | +0.958R |
-| Average loss R | -0.688R |
-| Net USDT (secondary) | 383.49 |
+| Total R | +6.550R |
+| Average / Expectancy R | +0.128R |
+| Median R | -0.451R |
+| Win rate | 41.2% |
+| Profit factor (R) | 1.25 |
+| Max drawdown R | -5.123R |
+| Max consecutive losses | 4 |
+| Average hold | 79.53 h |
+| Average win R | +1.549R |
+| Average loss R | -0.866R |
+| Net USDT (secondary) | 327.48 |
 
 ### All windows
 
-Trades: **141** (SL 56 / TP 27 / TIME 58)
+Trades: **108** (SL 68 / TP 40 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -3.085R |
-| Average / Expectancy R | -0.022R |
-| Median R | -0.335R |
-| Win rate | 42.6% |
-| Profit factor (R) | 0.95 |
-| Max drawdown R | -11.934R |
+| Total R | -1.043R |
+| Average / Expectancy R | -0.010R |
+| Median R | -1.008R |
+| Win rate | 37.0% |
+| Profit factor (R) | 0.98 |
+| Max drawdown R | -14.301R |
 | Max consecutive losses | 7 |
-| Average win R | +1.007R |
-| Average loss R | -0.784R |
-| Net USDT (secondary) | -154.27 |
+| Average hold | 80.86 h |
+| Average win R | +1.572R |
+| Average loss R | -0.940R |
+| Net USDT (secondary) | -52.14 |
 
 
 ## OOS proof
 
-OOS contains **63** closed trades. Pipeline produced fills, not an empty window.
+OOS contains **51** closed trades. Pipeline produced fills, not an empty window.
 
 ## A+ vs A
 
-**INSUFFICIENT SAMPLE** to claim A+ > A (need ≥30 each). A+=3, A=138.
+**INSUFFICIENT SAMPLE** to claim A+ > A (need ≥30 each). A+=3, A=105.
 
 ## Confluence factors (diagnostic only — weights frozen)
 
 | Factor | Train n ON/OFF | Train exp ON vs OFF | Improves on train? | OOS exp ON vs OFF |
 |---|---:|---:|---|---:|
-| btc | 46/13 | -1.87 vs -15.44 | yes | 16.53 vs -1.25 |
-| h4 | 59/0 | -4.86 vs 0.00 | no | 6.09 vs 0.00 |
-| structure | 44/15 | -7.07 vs 1.63 | no | 7.19 vs 0.27 |
-| level | 59/0 | -4.86 vs 0.00 | no | 6.09 vs 0.00 |
-| liquidity | 3/56 | -37.29 vs -3.13 | no | 26.94 vs 5.04 |
-| bos | 29/30 | -5.70 vs -4.05 | no | -0.24 vs 17.09 |
-| volume | 13/46 | -4.02 vs -5.10 | yes | 12.07 vs 4.38 |
-| rr | 59/0 | -4.86 vs 0.00 | no | 6.09 vs 0.00 |
+| btc | 30/14 | 5.88 vs -11.94 | yes | 16.80 vs 0.26 |
+| h4 | 44/0 | 0.21 vs 0.00 | no | 6.42 vs 0.00 |
+| structure | 33/11 | -15.68 vs 47.87 | no | 8.86 vs -6.66 |
+| level | 44/0 | 0.21 vs 0.00 | no | 6.42 vs 0.00 |
+| liquidity | 3/41 | -51.62 vs 4.00 | no | -4.76 vs 7.37 |
+| bos | 21/23 | 13.27 vs -11.72 | yes | -3.80 vs 25.17 |
+| volume | 12/32 | -5.65 vs 2.41 | no | 13.44 vs 4.02 |
+| rr | 44/0 | 0.21 vs 0.00 | no | 6.42 vs 0.00 |
 
 ## Execution model audit
 
@@ -130,9 +132,9 @@ OOS contains **63** closed trades. Pipeline produced fills, not an empty window.
 - SL / TP: stop checked before TP on each bar.
 - Same-bar SL and TP: **SL** (0 trades marked ambiguous).
 - Partial TP: 30/30/40 of remaining, matching live scale-out config (not retuned).
-- Time exit: 288 × 5m = 24h cap. Live engine has no TIME kill-switch.
+- Time exit: canonical NO_TIME_EXIT (maxHoldBars=1000000, maxHoldMs=0). Same rule as PAPER / TESTNET / LIVE.
 - Fees: taker in and out.
-- Funding cash: -15.2384 USDT across trades.
+- Funding cash: -20.5763 USDT across trades.
 
 Funding simulation included (signed, same sign as live Net = Gross − Fees + Funding).
 

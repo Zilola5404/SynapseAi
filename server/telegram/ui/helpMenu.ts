@@ -6,7 +6,7 @@ export function helpHome(lang: LocaleCode) {
   const text =
     lang === "en"
       ? `❓ <b>Help</b>\n\n🤖 <b>How SynapseAI works</b>\n\n1️⃣ I analyse the market\n\n2️⃣ I look for suitable opportunities\n\n3️⃣ I check the risk\n\n4️⃣ I open a trade only if it matches your settings\n\n5️⃣ I watch Stop Loss and Take Profit\n\n6️⃣ I close the trade automatically when conditions are met`
-      : `❓ <b>Помощь</b>\n\n🤖 <b>Как работает SynapseAI?</b>\n\n1️⃣ Анализирую рынок\n\n2️⃣ Ищу подходящие торговые возможности\n\n3️⃣ Проверяю риск\n\n4️⃣ Открываю сделку только если\nусловия соответствуют настройкам\n\n5️⃣ Контролирую Stop Loss\nи Take Profit\n\n6️⃣ Автоматически закрываю сделку\nпри выполнении условий`;
+      : `ℹ️ <b>Помощь</b>\n\n🤖 <b>Как работает SynapseAI?</b>\n\n1️⃣ Анализирую рынок\n\n2️⃣ Ищу подходящие торговые возможности\n\n3️⃣ Проверяю риск\n\n4️⃣ Открываю сделку только если\nусловия соответствуют настройкам\n\n5️⃣ Контролирую Stop Loss\nи Take Profit\n\n6️⃣ Автоматически закрываю сделку\nпри выполнении условий`;
   const kb = new InlineKeyboard()
     .text(lang === "en" ? "📋 PAPER check" : "📋 PAPER-проверка", "paper")
     .row()

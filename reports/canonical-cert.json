@@ -1,0 +1,10 @@
+{
+  "verdict": "EDGE_NOT_CONFIRMED",
+  "strategyPass": false,
+  "run": "2026-09-03T22:28:32.298Z",
+  "issues": [
+    "A+_INSUFFICIENT_SAMPLE"
+  ],
+  "oosTrades": 51,
+  "oosExpectancyR": 0.12842394901960782
+}

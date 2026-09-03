@@ -1,6 +1,6 @@
 # SYNAPSEAI PRODUCTION READINESS
 
-**Дата:** 2026-09-02
+**Дата:** 2026-09-03
 **ALLOW_LIVE:** false
 
 ## TECHNICAL EXECUTION
@@ -13,14 +13,14 @@ Demo FILLED / SL-TP / recovery / kill switch already certified. Not re-run in th
 
 **FAIL** — INSUFFICIENT_SAMPLE
 
-History 549.6d. Trades 141. A+ 3, A 138. Expectancy -0.022R.
+History 549.6d. Trades 108. A+ 3, A 105. Expectancy -0.010R.
 See `reports/backtest-results.md`, `reports/walk-forward-results.md`.
 
 ## OUT OF SAMPLE
 
-**PASS** (pipeline: 63 closed OOS trades, not a zero-window bug)
+**PASS**
 
-Expectancy **+0.122R**, median **~0R**, PF 1.35. This is not a strategy pass: A+ sample is 3.
+OOS contains **51** closed trades. Pipeline produced fills, not an empty window.
 
 ## PAPER TRADING
 
@@ -32,7 +32,7 @@ Expectancy **+0.122R**, median **~0R**, PF 1.35. This is not a strategy pass: A+
 
 ## STABILITY
 
-**FAIL** — uptime 0.80h
+**FAIL** — uptime 26.65h
 
 ## LIVE READINESS
 

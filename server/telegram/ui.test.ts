@@ -80,7 +80,30 @@ assert.match(
     potentialProfitUsdt: 100,
     expiresAt: new Date(Date.now() + 60_000),
   }, "confirm"),
-  /НОВЫЙ СИГНАЛ[\s\S]*LONG[\s\S]*не гарантируется/
+  /ТОРГОВАЯ ВОЗМОЖНОСТЬ[\s\S]*LONG[\s\S]*не прогноз прибыли/
 );
 
-console.log("  PASS  Telegram UX: Russian copy, friendly errors, no raw stack traces");
+assert.doesNotMatch(
+  signalOfferText("ru", {
+    symbol: "BTCUSDT",
+    direction: "LONG",
+    confidence: 14,
+    grade: "A+",
+    entry: 68500,
+    sl: 67800,
+    tp: 69900,
+    tp1: 69200,
+    tp2: 69900,
+    riskReward: 2,
+    factors: [{ ok: true, textRu: "Тренд подтверждён", textEn: "Trend confirmed" }],
+    sizeUsdt: 2500,
+    marginUsdt: 833,
+    leverage: 3,
+    maxRiskUsdt: 50,
+    potentialProfitUsdt: 100,
+    expiresAt: new Date(Date.now() + 60_000),
+  }, "confirm"),
+  /гарантированн|100%|high accuracy|profitable signal/i
+);
+
+console.log("  PASS  Telegram UX: Russian copy, friendly errors, no profit promises");

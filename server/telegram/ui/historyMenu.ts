@@ -1,6 +1,6 @@
 import { InlineKeyboard } from "grammy";
 import type { LocaleCode } from "../locales/index.js";
-import { closeReasonLabel, coin, money, price, whenLabel } from "./format.js";
+import { closeReasonLabel, coin, fundingLabel, money, price, whenLabel } from "./format.js";
 import { navRow } from "./keyboards.js";
 
 export function historyList(
@@ -58,8 +58,8 @@ export function tradeDetailScreen(
   const reason = closeReasonLabel(t.reason || "", lang);
   const text =
     lang === "en"
-      ? `📊 <b>TRADE DETAILS</b>\n\n${t.badge}\n\n${coin(t.symbol)}\n\nDirection:\n${dir}\n\nEntry:\n${price(t.entry)}\n\nExit:\n${t.exit != null ? price(t.exit) : "—"}\n\n━━━━━━━━━━━━\n\n💰 Result:\n\nBefore fees:\n${money(t.gross)}\n\nFees:\n${money(-Math.abs(t.fees))}\n\nFunding:\n${money(t.funding)}\n\n━━━━━━━━━━━━\n\nTOTAL:\n${t.net >= 0 ? "🟢" : "🔴"} ${money(t.net)}\n\nClose reason:\n${reason}`
-      : `📊 <b>ДЕТАЛИ СДЕЛКИ</b>\n\n${t.badge}\n\n${coin(t.symbol)}\n\nНаправление:\n${dir}\n\nВход:\n${price(t.entry)}\n\nВыход:\n${t.exit != null ? price(t.exit) : "—"}\n\n━━━━━━━━━━━━\n\n💰 Результат:\n\nДо комиссий:\n${money(t.gross)}\n\nКомиссии:\n${money(-Math.abs(t.fees))}\n\nFunding:\n${money(t.funding)}\n\n━━━━━━━━━━━━\n\nИТОГ:\n${t.net >= 0 ? "🟢" : "🔴"} ${money(t.net)}\n\nПричина закрытия:\n${reason}`;
+      ? `📊 <b>TRADE DETAILS</b>\n\n${t.badge}\n\n${coin(t.symbol)}\n\nDirection:\n${dir}\n\nEntry:\n${price(t.entry)}\n\nExit:\n${t.exit != null ? price(t.exit) : "—"}\n\n━━━━━━━━━━━━\n\n💰 Result:\n\nBefore fees:\n${money(t.gross)}\n\nFees:\n${money(-Math.abs(t.fees))}\n\n${fundingLabel(t.funding, "en")}\n\n━━━━━━━━━━━━\n\nTOTAL:\n${t.net >= 0 ? "🟢" : "🔴"} ${money(t.net)}\n\nClose reason:\n${reason}`
+      : `📊 <b>ДЕТАЛИ СДЕЛКИ</b>\n\n${t.badge}\n\n${coin(t.symbol)}\n\nНаправление:\n${dir}\n\nВход:\n${price(t.entry)}\n\nВыход:\n${t.exit != null ? price(t.exit) : "—"}\n\n━━━━━━━━━━━━\n\n💰 Результат:\n\nДо комиссий:\n${money(t.gross)}\n\nКомиссии:\n${money(-Math.abs(t.fees))}\n\n${fundingLabel(t.funding, "ru")}\n\n━━━━━━━━━━━━\n\nИТОГ:\n${t.net >= 0 ? "🟢" : "🔴"} ${money(t.net)}\n\nПричина закрытия:\n${reason}`;
   const kb = new InlineKeyboard();
   navRow(kb, lang, "history");
   return { text, markup: kb };

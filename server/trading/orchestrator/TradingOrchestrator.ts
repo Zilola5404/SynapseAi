@@ -29,6 +29,7 @@ import { nextTrailingStop } from "../execution/trailing.js";
 import { computeTradePnl, canRunFinalize } from "../pnl.js";
 import { SIGNAL_TTL_MS, buildSignalFactors, potentialMoveUsdt, isSignalExpired, priceMovedTooFar, encodeConfluencePayload, parseSignalFactors } from "../signalExplain.js";
 import { autoAllowed } from "../intelligence/NoTradeEngine.js";
+import { autoTradeCertified } from "../strategy/canonicalCert.js";
 import { INTEL } from "../intelligence/config.js";
 import { estimateTradeCosts } from "../risk/tradeCostGate.js";
 import { nextUtcMidnight } from "../risk/lossCluster.js";
@@ -106,6 +107,9 @@ export class TradingOrchestrator {
   async startScanner(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (user?.accountLocked) throw new Error("Аккаунт LOCKED. Сначала /unlock");
+    if (!autoTradeCertified()) {
+      throw new Error("CANONICAL_CERT: AUTO disabled until EDGE_CONFIRMED");
+    }
     await prisma.user.update({
       where: { id: userId },
       data: { scannerEnabled: true, autoTradeEnabled: true },
@@ -1163,6 +1167,10 @@ export class TradingOrchestrator {
   async runAutoCycle() {
     bootLog("[AUTO] Cycle started");
     logger.info("[AUTO] Cycle started");
+    if (!autoTradeCertified()) {
+      logger.info("[AUTO] SKIP — canonical cert is not EDGE_CONFIRMED");
+      return;
+    }
     if (!marketDataProvider.isHealthy()) {
       logger.warn("[AUTO] Market data DEGRADED — skip new trades");
       return;

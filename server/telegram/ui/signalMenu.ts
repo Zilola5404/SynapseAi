@@ -58,10 +58,6 @@ export function signalOfferText(lang: LocaleCode, s: SignalView, mode: "auto" | 
       ? lang === "en" ? `⏳ Valid for about ${ttl}s` : `⏳ Сигнал действует около ${ttl} сек.`
       : "";
   const whyChecks = factorLines(s.factors, lang);
-  const disclaimer =
-    lang === "en"
-      ? "⚠️ Risk is present in every trade.\nProfit is not guaranteed."
-      : "⚠️ Риск присутствует в любой сделке.\nПрибыль не гарантируется.";
   const autoNote =
     mode === "auto"
       ? lang === "en"
@@ -69,8 +65,8 @@ export function signalOfferText(lang: LocaleCode, s: SignalView, mode: "auto" | 
         : "\n🤖 Авто: только сетапы A+ TRENDING после Risk Management."
       : "";
   return lang === "en"
-    ? `📡 <b>NEW SIGNAL</b>\n\n${coin(s.symbol)}\n\nDirection:\n${dir}\n\n━━━━━━━━━━━━\n\n📍 Possible entry:\n${price(s.entry)}\n\n🛑 Stop Loss:\n${price(s.sl)}\n\n🎯 Take Profit:\n${price(s.tp1 || s.tp)}\n\n📊 Risk / Reward:\n1 : ${s.riskReward.toFixed(1)}\n\n━━━━━━━━━━━━\n\n🧠 Why the system considers an entry:\n\n${whyChecks}\n\n━━━━━━━━━━━━\n\n${disclaimer}${autoNote}${ttlLine ? `\n\n${ttlLine}` : ""}`
-    : `📡 <b>НОВЫЙ СИГНАЛ</b>\n\n${coin(s.symbol)}\n\nНаправление:\n${dir}\n\n━━━━━━━━━━━━\n\n📍 Возможный вход:\n${price(s.entry)}\n\n🛑 Stop Loss:\n${price(s.sl)}\n\n🎯 Take Profit:\n${price(s.tp1 || s.tp)}\n\n📊 Risk / Reward:\n1 : ${s.riskReward.toFixed(1)}\n\n━━━━━━━━━━━━\n\n🧠 Почему система рассматривает вход:\n\n${whyChecks}\n\n━━━━━━━━━━━━\n\n${disclaimer}${autoNote}${ttlLine ? `\n\n${ttlLine}` : ""}`;
+    ? `📡 <b>TRADING OPPORTUNITY</b>\n\n${coin(s.symbol)}\n\nDirection:\n${dir}\n\nEntry price:\n${price(s.entry)}\n\nStop Loss:\n${price(s.sl)}\n\nTake Profit:\n${price(s.tp1 || s.tp)}\n\nRisk / Reward:\n1 : ${s.riskReward.toFixed(1)}\n\nWhy this setup appeared:\n\n${whyChecks}\n\nWhy risk is acceptable:\n\n🛡 Risk Engine: PASSED\n\nThis is a trading opportunity, not a profit forecast.${autoNote}${ttlLine ? `\n\n${ttlLine}` : ""}`
+    : `📡 <b>ТОРГОВАЯ ВОЗМОЖНОСТЬ</b>\n\n${coin(s.symbol)}\n\nНаправление:\n${dir}\n\nЦена входа:\n${price(s.entry)}\n\nStop Loss:\n${price(s.sl)}\n\nTake Profit:\n${price(s.tp1 || s.tp)}\n\nRisk / Reward:\n1 : ${s.riskReward.toFixed(1)}\n\nПочему появился сигнал:\n\n${whyChecks}\n\nПочему риск допустим:\n\n🛡 Risk Engine: PASSED\n\nЭто торговая возможность, а не прогноз прибыли.${autoNote}${ttlLine ? `\n\n${ttlLine}` : ""}`;
 }
 
 export function signalOfferKeyboard(lang: LocaleCode, id: string, expired: boolean, tradingMode = "TESTNET") {
@@ -81,9 +77,8 @@ export function signalOfferKeyboard(lang: LocaleCode, id: string, expired: boole
       : lang === "en" ? "🟢 Open on TESTNET" : "🟢 Открыть на TESTNET";
   if (!expired) {
     kb.text(openLabel, `sigopen:${id}`)
-      .text(lang === "en" ? "👀 Watch" : "👀 Наблюдать", `sigskip:${id}`)
-      .row()
       .text(lang === "en" ? "📊 Details" : "📊 Подробнее", `siginfo:${id}`)
+      .row()
       .text(lang === "en" ? "❌ Skip" : "❌ Пропустить", `sigskip:${id}`);
   } else {
     kb.text(lang === "en" ? "🔎 New analysis" : "🔎 Новый анализ", "signals");
@@ -153,10 +148,10 @@ export function signalHistoryScreen(
 
 export function noTradeText(lang: LocaleCode, vetoes: { textRu: string; textEn: string }[], score?: number) {
   const reasons = vetoes.length
-    ? vetoes.map((v) => `⚠️ ${lang === "en" ? v.textEn : v.textRu}`).join("\n")
+    ? vetoes.map((v) => `• ${lang === "en" ? v.textEn : v.textRu}`).join("\n")
     : lang === "en"
-      ? "⚠️ No setup matches the strategy rules right now."
-      : "⚠️ Сейчас нет сетапа, который проходит правила стратегии.";
+      ? "Not enough confirmation for an entry."
+      : "Недостаточно подтверждений для входа.";
   const scoreLine =
     typeof score === "number" && score > 0
       ? lang === "en"
@@ -164,8 +159,8 @@ export function noTradeText(lang: LocaleCode, vetoes: { textRu: string; textEn: 
         : `\n⭐ Последний confluence: ${score} / 15\n`
       : "";
   return lang === "en"
-    ? `⚪ <b>No trade right now</b>\n\nI keep analysing the market.${scoreLine}\nReason:\n\n${reasons}\n\nIt is better to skip a poor trade\nthan to open one just to be trading.`
-    : `⚪ <b>Сейчас сделки нет</b>\n\nЯ продолжаю анализировать рынок.${scoreLine}\nПричина:\n\n${reasons}\n\nЛучше пропустить плохую сделку,\nчем открыть её просто ради торговли.`;
+    ? `⚪ <b>No good trading opportunity right now</b>\n\nThe system keeps analysing the market.\n\nReason:\n${reasons}\n\nIt is better to skip a weak setup than to trade for the sake of trading.`
+    : `⚪ <b>Сейчас хорошей торговой возможности нет.</b>\n\nСистема продолжает анализировать рынок.\n\nПричина:\n${reasons}\n\nЛучше пропустить слабый вход,\nчем торговать просто ради сделки.`;
 }
 
 export function signalExpiredText(lang: LocaleCode) {

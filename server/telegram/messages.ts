@@ -1,5 +1,5 @@
 import type { LocaleCode } from "./locales/index.js";
-import { coin, money, price, qtyLabel, sideLabel, closeReasonLabel } from "./ui/format.js";
+import { coin, money, price, qtyLabel, sideLabel, closeReasonLabel, fundingLabel } from "./ui/format.js";
 
 export function tradeOpenedMessage(
   lang: LocaleCode,
@@ -77,8 +77,8 @@ export function tradeClosedMessage(
         : `\n💳 Комиссия: ${money(-Math.abs(p.fees))}`;
   const fundingLine =
     lang === "en"
-      ? `\n💧 Funding: ${money(p.funding || 0)} (received +, paid −)`
-      : `\n💧 Funding: ${money(p.funding || 0)} (получено +, уплачено −)`;
+      ? `\n💧 ${fundingLabel(p.funding || 0, "en")}`
+      : `\n💧 ${fundingLabel(p.funding || 0, "ru")}`;
   const gross =
     p.grossPnl != null
       ? lang === "en"

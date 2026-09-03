@@ -1,107 +1,41 @@
 # EXIT ANALYSIS
 
-**Run:** 2026-09-02T20:34:01.820Z
+**Run:** 2026-09-03T22:28:32.298Z
 
 | Stat | Value |
 |---|---:|
-| Total trades | 141 |
-| SL exits | 56 |
-| TP exits | 27 |
-| TIME exits | 58 |
+| Total trades | 108 |
+| SL exits | 68 |
+| TP exits | 40 |
+| TIME exits | 0 |
 | Manual exits | 0 |
-| Average time in trade | 14.73 h |
-| Average MFE | +0.967R |
-| Average MAE | -0.754R |
-| TIME with MFE ≥ 1R and result < 0.5R | 7 |
+| Average time in trade | 80.86 h |
+| Average MFE | +1.159R |
+| Average MAE | -0.886R |
+| TIME with MFE ≥ 1R and result < 0.5R | 0 |
 
 TIME means the 24h sim cap was hit before SL or full scale-out. Live has no this cap — TIME is a model artifact to bound MAE/MFE.
 
 ## Examples (TIME)
 
 ```
-Trade #1  BTCUSDT LONG A
-Entry: 91374.5713
-SL: 88095.8436
-TP1: 94616.9564
-TP2: 97877.5128
-TP3: n/a
-MFE: +1.077R
-MAE: -0.114R
-Exit: TIME @ 93807.2269
-Time in trade: 24.08h
-Result: +0.718R
-Trade #2  BTCUSDT LONG A
-Entry: 95285.6533
-SL: 92692.7334
-TP1: 97840.4666
-TP2: 100414.3332
-TP3: n/a
-MFE: +0.082R
-MAE: -0.560R
-Exit: TIME @ 94281.1000
-Time in trade: 24.08h
-Result: -0.412R
-Trade #3  BTCUSDT LONG A
-Entry: 103014.8989
-SL: 102224.9057
-TP1: 103763.6943
-TP2: 104533.0886
-TP3: n/a
-MFE: +1.719R
-MAE: -0.981R
-Exit: TIME @ 103559.4383
-Time in trade: 24.08h
-Result: +0.553R
-Trade #4  BTCUSDT SHORT A
-Entry: 110074.7806
-SL: 113007.7969
-TP1: 107186.0031
-TP2: 104275.1062
-TP3: n/a
-MFE: +0.517R
-MAE: -0.653R
-Exit: TIME @ 111987.3000
-Time in trade: 24.08h
-Result: -0.675R
-Trade #5  BTCUSDT SHORT A
-Entry: 104911.8134
-SL: 109304.7328
-TP1: 100560.8672
-TP2: 96188.9344
-TP3: n/a
-MFE: +0.328R
-MAE: -0.590R
-Exit: TIME @ 106706.7000
-Time in trade: 24.08h
-Result: -0.431R
 ```
 
 ## Examples (SL)
 
 ```
 Trade #1  BTCUSDT SHORT A
-Entry: 83713.2540
-SL: 87083.6299
-TP1: 80376.1701
-TP2: 77022.4402
-TP3: n/a
-MFE: +0.746R
-MAE: -1.120R
-Exit: SL @ 87083.6299
-Time in trade: 14.92h
-Result: -1.020R
-Trade #2  BTCUSDT SHORT A
-Entry: 82067.2833
-SL: 82776.2836
-TP1: 81390.9164
-TP2: 80698.2328
-TP3: n/a
-MFE: +1.350R
-MAE: -1.853R
-Exit: SL @ 82360.6734
-Time in trade: 2.67h
-Result: -0.505R
-Trade #3  BTCUSDT LONG A
+Entry: 79415.4137
+SL: 79923.8313
+TP1: 78938.7687
+TP2: 78446.2374
+TP3: 78279.6313
+MFE: +0.050R
+MAE: -1.146R
+Exit: SL @ 79923.8313
+Time in trade: 0.75h
+Result: -1.125R
+Trade #2  BTCUSDT LONG A
 Entry: 88152.7270
 SL: 87011.8649
 TP1: 89258.3351
@@ -112,18 +46,7 @@ MAE: -1.002R
 Exit: SL @ 87011.8649
 Time in trade: 7.00h
 Result: -1.061R
-Trade #4  BTCUSDT LONG A
-Entry: 107521.5000
-SL: 106039.4000
-TP1: 108960.6000
-TP2: 110421.2000
-TP3: n/a
-MFE: +0.289R
-MAE: -1.001R
-Exit: SL @ 106039.4000
-Time in trade: 4.33h
-Result: -1.063R
-Trade #5  BTCUSDT SHORT A
+Trade #3  BTCUSDT SHORT A
 Entry: 112102.0751
 SL: 113501.0245
 TP1: 110747.9755
@@ -134,12 +57,67 @@ MAE: -1.016R
 Exit: SL @ 113501.0245
 Time in trade: 7.33h
 Result: -1.060R
+Trade #4  BTCUSDT SHORT A
+Entry: 110074.7806
+SL: 113007.7969
+TP1: 107186.0031
+TP2: 104275.1062
+TP3: n/a
+MFE: +0.517R
+MAE: -1.014R
+Exit: SL @ 113007.7969
+Time in trade: 53.92h
+Result: -1.017R
+Trade #5  BTCUSDT LONG A
+Entry: 124875.3701
+SL: 124338.1497
+TP1: 125362.4503
+TP2: 125874.6006
+TP3: n/a
+MFE: +0.319R
+MAE: -1.442R
+Exit: SL @ 124338.1497
+Time in trade: 1.42h
+Result: -1.186R
 ```
 
 ## Examples (TP)
 
 ```
-Trade #1  BTCUSDT SHORT A
+Trade #1  BTCUSDT LONG A
+Entry: 91374.5713
+SL: 88095.8436
+TP1: 94616.9564
+TP2: 97877.5128
+TP3: n/a
+MFE: +2.127R
+MAE: -0.114R
+Exit: TP2 @ 96899.3459
+Time in trade: 365.08h
+Result: +1.672R
+Trade #2  BTCUSDT LONG A
+Entry: 102947.1853
+SL: 102224.9734
+TP1: 103628.2266
+TP2: 104329.8532
+TP3: n/a
+MFE: +1.974R
+MAE: -0.085R
+Exit: TP2 @ 104119.3652
+Time in trade: 1.67h
+Result: +1.508R
+Trade #3  BTCUSDT LONG A
+Entry: 103040.5040
+SL: 102224.8801
+TP1: 103814.9199
+TP2: 104609.9398
+TP3: n/a
+MFE: +2.217R
+MAE: -0.981R
+Exit: TP2 @ 104371.4338
+Time in trade: 36.92h
+Result: +1.494R
+Trade #4  BTCUSDT SHORT A
 Entry: 113714.3526
 SL: 114152.7371
 TP1: 113321.4629
@@ -150,48 +128,15 @@ MAE: -0.652R
 Exit: TP3 @ 112977.6815
 Time in trade: 12.58h
 Result: +1.476R
-Trade #2  BTCUSDT SHORT A
-Entry: 76348.9272
-SL: 76997.0642
-TP1: 75731.3358
-TP2: 75098.4716
-TP3: n/a
-MFE: +2.080R
-MAE: -0.931R
-Exit: TP2 @ 75288.3309
-Time in trade: 11.58h
-Result: +1.547R
-Trade #3  BTCUSDT SHORT A
-Entry: 69326.7319
-SL: 72013.7405
-TP1: 66667.2595
-TP2: 63994.0190
-TP3: n/a
-MFE: +2.168R
-MAE: -0.566R
-Exit: TP2 @ 64795.9911
-Time in trade: 7.50h
-Result: +1.665R
-Trade #4  BTCUSDT SHORT A
-Entry: 63152.6669
-SL: 63495.5653
-TP1: 62835.0347
-TP2: 62504.7694
-TP3: n/a
-MFE: +2.190R
-MAE: -0.486R
-Exit: TP2 @ 62603.8490
-Time in trade: 2.42h
-Result: +1.454R
 Trade #5  BTCUSDT SHORT A
-Entry: 69986.0000
-SL: 71092.7000
-TP1: 68907.3000
-TP2: 67814.6000
+Entry: 97210.4540
+SL: 99960.0243
+TP1: 94488.5757
+TP2: 91752.8514
 TP3: n/a
-MFE: +2.180R
-MAE: -0.208R
-Exit: TP2 @ 68142.4100
-Time in trade: 7.08h
-Result: +1.620R
+MFE: +1.998R
+MAE: -0.183R
+Exit: TP2 @ 92573.5687
+Time in trade: 86.25h
+Result: +1.692R
 ```

@@ -34,8 +34,8 @@ export function autoMenuScreen(params: {
 export function autoConfirmScreen(lang: LocaleCode, mode: string) {
   const text =
     lang === "en"
-      ? `⚠️ <b>Enable auto trading?</b>\n\nAuto trading works on <b>${mode === "PAPER" ? "PAPER" : "TESTNET"}</b> only.\nLIVE is disabled.\n\nBefore start the system checks:\n✅ API / keys (TESTNET)\n✅ Market data\n✅ Risk Engine\n✅ Kill switch off\n✅ No conflicting open positions`
-      : `⚠️ <b>Включить автоторговлю?</b>\n\nАвтоторговля работает только на <b>${mode === "PAPER" ? "PAPER" : "TESTNET"}</b>.\nLIVE выключен.\n\nПеред включением система проверит:\n✅ API / ключи (для TESTNET)\n✅ Данные рынка\n✅ Risk Engine\n✅ Kill Switch выключен\n✅ Нет конфликтующих позиций`;
+      ? `⚠️ <b>Enable auto trading?</b>\n\nAuto trading works on <b>${mode === "PAPER" ? "PAPER" : "TESTNET"}</b> only.\nLIVE is disabled.\n\nUntil EDGE_CONFIRMED, AUTO stays off.\n\nBefore start the system checks:\n✅ Strategy certification\n✅ API / keys (TESTNET)\n✅ Market data\n✅ Risk Engine\n✅ Kill switch off\n✅ No conflicting open positions`
+      : `⚠️ <b>Включить автоторговлю?</b>\n\nАвтоторговля работает только на <b>${mode === "PAPER" ? "PAPER" : "TESTNET"}</b>.\nLIVE выключен.\n\nПока нет EDGE_CONFIRMED, система не включит AUTO.\n\nПеред включением система проверит:\n✅ Сертификация стратегии\n✅ API / ключи (для TESTNET)\n✅ Данные рынка\n✅ Risk Engine\n✅ Kill Switch выключен\n✅ Нет конфликтующих позиций`;
   const kb = new InlineKeyboard()
     .text(lang === "en" ? "✅ Confirm" : "✅ Подтвердить", "auto_yes")
     .text(lang === "en" ? "❌ Cancel" : "❌ Отмена", "auto_menu");

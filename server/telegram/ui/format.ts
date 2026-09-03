@@ -1,3 +1,13 @@
+export function fundingLabel(n: number, locale: "ru" | "en") {
+  if (!Number.isFinite(n) || n === 0) {
+    return locale === "en" ? "Funding: $0.00" : "Funding: $0.00";
+  }
+  if (n > 0) {
+    return locale === "en" ? `Funding received: ${money(n)}` : `Funding получено: ${money(n)}`;
+  }
+  return locale === "en" ? `Funding paid: ${money(n)}` : `Funding уплачено: ${money(n)}`;
+}
+
 export function money(n: number, withSign = true) {
   const abs = Math.abs(n).toFixed(2);
   if (!withSign) return `$${abs}`;
@@ -104,6 +114,11 @@ export function friendlyError(raw: string, locale: "ru" | "en") {
     return locale === "en"
       ? "There is already an open trade on this coin."
       : "По этой монете уже есть открытая сделка.";
+  }
+  if (/CANONICAL_CERT|EDGE_NOT_CONFIRMED|EDGE_CONFIRMED/i.test(s)) {
+    return locale === "en"
+      ? "🤖 Auto trading stays off until the strategy is certified on out-of-sample data.\nPAPER AUTO starts only after EDGE_CONFIRMED."
+      : "🤖 Автоторговля выключена, пока стратегия не подтверждена на out-of-sample данных.\nPAPER AUTO включается только после EDGE_CONFIRMED.";
   }
   if (/TP_TOO_CLOSE_TO_COVER_COSTS/i.test(s)) {
     return locale === "en"

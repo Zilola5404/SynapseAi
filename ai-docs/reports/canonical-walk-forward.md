@@ -1,7 +1,35 @@
-# WALK-FORWARD RESULTS
+# CANONICAL WALK-FORWARD
 
 **Run:** 2026-09-03T22:28:32.298Z
-**Windows:** 5
+**Universe:** BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT, ADAUSDT
+**History:** ~549.6 days (18 months requested)
+**Entry / weights / risk / costs:** unchanged (frozen Intelligence)
+**Lookahead:** forbidden — closedWindow(t) only
+**Exit:** NO_TIME_EXIT (maxHoldBars=1000000, maxHoldMs=0)
+**Split:** rolling walk-forward train 182d / val 61d / oos 61d shift 61d
+
+This file is the certification walk. Weights were not fit on this run.
+
+## Per-window TRAIN / VALIDATION / OOS
+
+| Window | Bucket | Trades | Expectancy | Median | PF | Win Rate | Max DD | Max consec. losses | Avg hold |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | TRAIN | 44 | +0.004R | -1.015R | 1.01 | 38.6% | -7.404R | 6 | 98.01 h |
+| 1 | VALIDATION | 13 | -0.598R | -1.022R | 0.30 | 15.4% | -8.931R | 9 | 28.05 h |
+| 1 | OOS | 6 | +0.526R | +0.601R | 2.74 | 50.0% | -1.424R | 2 | 157.29 h |
+| 2 | TRAIN | 51 | -0.131R | -1.018R | 0.80 | 33.3% | -11.780R | 9 | 76.04 h |
+| 2 | VALIDATION | 6 | +0.526R | +0.601R | 2.74 | 50.0% | -1.424R | 2 | 157.29 h |
+| 2 | OOS | 11 | +0.200R | -0.521R | 1.38 | 45.5% | -2.107R | 2 | 24.10 h |
+| 3 | TRAIN | 50 | -0.145R | -1.018R | 0.78 | 32.0% | -9.558R | 7 | 51.34 h |
+| 3 | VALIDATION | 11 | +0.200R | -0.521R | 1.38 | 45.5% | -2.107R | 2 | 24.10 h |
+| 3 | OOS | 10 | -0.440R | -1.016R | 0.43 | 20.0% | -5.574R | 4 | 55.97 h |
+| 4 | TRAIN | 30 | -0.081R | -1.013R | 0.87 | 33.3% | -6.638R | 5 | 52.45 h |
+| 4 | VALIDATION | 10 | -0.440R | -1.016R | 0.43 | 20.0% | -5.574R | 4 | 55.97 h |
+| 4 | OOS | 10 | +0.218R | -0.425R | 1.49 | 40.0% | -2.460R | 3 | 59.92 h |
+| 5 | TRAIN | 26 | -0.028R | -0.763R | 0.95 | 34.6% | -4.905R | 4 | 52.13 h |
+| 5 | VALIDATION | 10 | +0.218R | -0.425R | 1.49 | 40.0% | -2.460R | 3 | 59.92 h |
+| 5 | OOS | 14 | +0.245R | +0.061R | 1.54 | 50.0% | -3.678R | 4 | 120.60 h |
+
 
 ## WINDOW 1
 
@@ -304,3 +332,14 @@ Trades: **14** (SL 7 / TP 7 / TIME 0)
 | Net USDT (secondary) | 171.30 |
 
 Weights were not fit per window. This is frozen-parameter walk-forward.
+
+
+## Sample gate (pre-declared, not fitted after the run)
+
+| Check | Value |
+|---|---|
+| STRATEGY PASS | **NO** |
+| Label | INSUFFICIENT_SAMPLE |
+| Issues | A+_INSUFFICIENT_SAMPLE |
+| OOS n / expectancy | 51 / +0.128R |
+| Positive OOS windows | 4 / 5 |

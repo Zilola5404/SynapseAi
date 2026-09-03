@@ -1,19 +1,19 @@
 {
-  "started": "2026-09-02T20:34:01.820Z",
+  "started": "2026-09-03T22:28:32.298Z",
   "historyDays": 549.6076388773148,
   "windows": 5,
   "counts": {
-    "all": 141,
-    "train": 59,
-    "validation": 19,
-    "oos": 63,
+    "all": 108,
+    "train": 44,
+    "validation": 13,
+    "oos": 51,
     "aPlus": 3,
-    "a": 138
+    "a": 105
   },
   "gate": {
     "aPlus": 3,
-    "a": 138,
-    "oos": 63,
+    "a": 105,
+    "oos": 51,
     "historyDays": 549.6076388773148,
     "walkForwardWindows": 5,
     "issues": [
@@ -24,31 +24,31 @@
   },
   "fundingIncluded": true,
   "allR": {
-    "trades": 141,
-    "totalR": -3.085482399999997,
-    "averageR": -0.0218828539007092,
-    "expectancyR": -0.0218828539007092,
-    "medianR": -0.33524724,
-    "winRate": 0.425531914893617,
-    "profitFactor": 0.9514293253911464,
-    "maxDrawdownR": -11.93382282,
+    "trades": 108,
+    "totalR": -1.042884220000002,
+    "averageR": -0.009656335370370387,
+    "expectancyR": -0.009656335370370387,
+    "medianR": -1.00756694,
+    "winRate": 0.37037037037037035,
+    "profitFactor": 0.9836876988980606,
+    "maxDrawdownR": -14.300783939999999,
     "maxConsecutiveLosses": 7,
-    "averageWinR": 1.007335689,
-    "averageLossR": -0.7842669597530865,
-    "netUsdt": -154.27411999999987
+    "averageWinR": 1.5722373750000003,
+    "averageLossR": -0.9401820473529415,
+    "netUsdt": -52.144211
   },
   "oosR": {
-    "trades": 63,
-    "totalR": 7.6697788000000005,
-    "averageR": 0.12174252063492064,
-    "expectancyR": 0.12174252063492064,
-    "medianR": -0.00489126,
-    "winRate": 0.49206349206349204,
-    "profitFactor": 1.3481699352197398,
-    "maxDrawdownR": -5.4320827000000005,
-    "maxConsecutiveLosses": 5,
-    "averageWinR": 0.9580198690322581,
-    "averageLossR": -0.688401160625,
-    "netUsdt": 383.48894
+    "trades": 51,
+    "totalR": 6.5496213999999995,
+    "averageR": 0.12842394901960782,
+    "expectancyR": 0.12842394901960782,
+    "medianR": -0.4506007,
+    "winRate": 0.4117647058823529,
+    "profitFactor": 1.2520350424043492,
+    "maxDrawdownR": -5.12253088,
+    "maxConsecutiveLosses": 4,
+    "averageWinR": 1.549360420952381,
+    "averageLossR": -0.8662315813333337,
+    "netUsdt": 327.48107
   }
 }

@@ -48,6 +48,7 @@ import { testOrderProgressMessage, testOrderFilledMessage, tradeProtectionMessag
 import { autoMenuScreen, autoConfirmScreen } from "./ui/autoMenu.js";
 import { classifyTradeOrigin, isStrategyTrade, originBadge } from "../trading/tradeSource.js";
 import { estimateTradeCosts } from "../trading/risk/tradeCostGate.js";
+import { autoTradeCertified } from "../trading/strategy/canonicalCert.js";
 import { getDecryptedCredentials } from "../services/credentialService.js";
 import { testOrderFailedMessage, parseBinancePayload, redactSecrets, logTestOrderFailed } from "./testOrderError.js";
 import { logger } from "../logger.js";
@@ -547,6 +548,14 @@ export async function handleAction(
     if (action === "auto_yes") {
       if (user.accountLocked) {
         await reply(lockedNeedUnlock(lang));
+        return;
+      }
+      if (!autoTradeCertified()) {
+        await reply(
+          lang === "en"
+            ? "🤖 Auto trading stays off until the strategy is certified (EDGE_CONFIRMED).\nPAPER AUTO is not started from this menu."
+            : "🤖 Автоторговля выключена, пока стратегия не подтверждена (EDGE_CONFIRMED).\nPAPER AUTO из этого меню не запускается."
+        );
         return;
       }
       if (user.tradingMode === "LIVE") {

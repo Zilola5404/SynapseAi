@@ -1,18 +1,15 @@
 # 24h soak
 
-**Старт процесса:** 2026-09-02 22:54:26 UTC+3 (`npm run dev`, pid 28152)
-**Снимок:** 2026-09-02T20:42:31.555Z
-**Вердикт:** **FAIL** — фактический uptime **0.80 ч** (нужно ≥ 24).
+**Вердикт:** **FAIL** — 24h soak is not completed on this pass.
 
-| Проверка | Значение |
-|---|---|
-| Actual uptime | 0.80 h |
-| Restart count (this pid) | 0 observed since 22:54 UTC+3 |
-| Worker crashes | not observed in this snapshot |
-| WebSocket | true |
-| Telegram | true |
-| Database | true |
-| Memory trend | not sampled over 24h — insufficient duration |
-| ALLOW_LIVE | false |
+Canonical walk-forward / OOS certification was run instead of claiming a new soak. The previous snapshot (2026-09-02) had **0.80 h** uptime. Calendar time since that pid is **not** process uptime.
 
-15 minutes is not a soak. Uptime 0.80h is not a 24h soak. FAIL until a single process holds ≥24h.
+PASS only if **one process** holds `uptime >= 24h` with:
+
+- Telegram polling alive
+- No crash
+- No stuck workers
+- No duplicate orders
+- No unsafe LIVE trading
+
+Start: `npm run dev` and leave it running 24h, then update this file from a real health snapshot.

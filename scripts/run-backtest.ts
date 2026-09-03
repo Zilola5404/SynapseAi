@@ -61,6 +61,7 @@ function rTable(title: string, trades: WalkTrade[]) {
     `| Profit factor (R) | ${Number.isFinite(m.profitFactor) ? m.profitFactor.toFixed(2) : "n/a"} |`,
     `| Max drawdown R | ${fmtR(m.maxDrawdownR)} |`,
     `| Max consecutive losses | ${m.maxConsecutiveLosses} |`,
+    `| Average hold | ${trades.length ? (avg(trades.map((t) => t.timeInTradeMs)) / 3600000).toFixed(2) : "0.00"} h |`,
     `| Average win R | ${fmtR(m.averageWinR)} |`,
     `| Average loss R | ${fmtR(m.averageLossR)} |`,
     `| Net USDT (secondary) | ${m.netUsdt.toFixed(2)} |`,
@@ -419,8 +420,110 @@ async function main() {
   writeBoth("reports/oos-diagnostics.md", oosMd);
   writeBoth("reports/walk-forward-results.md", wfLines.join("\n"));
   writeBoth("reports/exit-analysis.md", exitMd);
-  writeBoth("reports/soak-24h.md", soak.md);
   writeBoth("reports/production-readiness.md", readyMd);
+
+  const verdict: "EDGE_CONFIRMED" | "EDGE_NOT_CONFIRMED" = gate.strategyPass ? "EDGE_CONFIRMED" : "EDGE_NOT_CONFIRMED";
+  const compact: string[] = [
+    "| Window | Bucket | Trades | Expectancy | Median | PF | Win Rate | Max DD | Max consec. losses | Avg hold |",
+    "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+  ];
+  for (const w of run.windows) {
+    const rows = byWindow.get(w.id) || { train: [], validation: [], oos: [] };
+    for (const [bucket, list] of [
+      ["TRAIN", rows.train],
+      ["VALIDATION", rows.validation],
+      ["OOS", rows.oos],
+    ] as const) {
+      const m = computeRMetrics(list);
+      const hold = list.length ? avg(list.map((t) => t.timeInTradeMs)) / 3600000 : 0;
+      compact.push(
+        `| ${w.id} | ${bucket} | ${m.trades} | ${fmtR(m.expectancyR)} | ${fmtR(m.medianR)} | ${Number.isFinite(m.profitFactor) ? m.profitFactor.toFixed(2) : "n/a"} | ${fmtPct(m.winRate)} | ${fmtR(m.maxDrawdownR)} | ${m.maxConsecutiveLosses} | ${hold.toFixed(2)} h |`
+      );
+    }
+  }
+  const canonicalWf = [
+    "# CANONICAL WALK-FORWARD",
+    "",
+    `**Run:** ${started}`,
+    `**Universe:** ${SCAN_UNIVERSE.join(", ")}`,
+    `**History:** ~${run.historyDays.toFixed(1)} days (${run.months} months requested)`,
+    `**Entry / weights / risk / costs:** unchanged (frozen Intelligence)`,
+    `**Lookahead:** forbidden — closedWindow(t) only`,
+    `**Exit:** ${EXIT_POLICY.id} (maxHoldBars=${EXIT_POLICY.maxHoldBars}, maxHoldMs=${EXIT_POLICY.maxHoldMs})`,
+    `**Split:** ${run.split}`,
+    "",
+    "This file is the certification walk. Weights were not fit on this run.",
+    "",
+    "## Per-window TRAIN / VALIDATION / OOS",
+    "",
+    ...compact,
+    "",
+    ...wfLines.slice(4),
+    "",
+    "## Sample gate (pre-declared, not fitted after the run)",
+    "",
+    `| Check | Value |`,
+    `|---|---|`,
+    `| STRATEGY PASS | **${gate.strategyPass ? "YES" : "NO"}** |`,
+    `| Label | ${gate.sampleLabel} |`,
+    `| Issues | ${gate.issues.join(", ") || "none"} |`,
+    `| OOS n / expectancy | ${oos.length} / ${fmtR(oosR.expectancyR)} |`,
+    `| Positive OOS windows | ${positiveOosWindows} / ${run.windows.length} |`,
+    "",
+  ].join("\n");
+  writeBoth("reports/canonical-walk-forward.md", canonicalWf);
+
+  const decisionMd = [
+    "# CANONICAL STRATEGY DECISION",
+    "",
+    `**Run:** ${started}`,
+    `**Source:** \`ai-docs/reports/canonical-walk-forward.md\``,
+    `**Exit:** ${EXIT_POLICY.id}`,
+    `**Gate:** \`evaluateSampleGate\` in \`server/trading/backtest/rMetrics.ts\` (declared before this run)`,
+    "",
+    "## VERDICT",
+    "",
+    `# ${verdict}`,
+    "",
+    gate.strategyPass
+      ? "OOS sample and expectancy cleared the pre-declared gate. PAPER AUTO may be considered next."
+      : "The pre-declared gate did not pass. AUTO stays off. Weights / threshold / filters were **not** changed after this result.",
+    "",
+    "## Why this label",
+    "",
+    `- strategyPass = **${gate.strategyPass}**`,
+    `- issues: ${gate.issues.join(", ") || "none"}`,
+    `- OOS trades: ${oos.length} (need ≥ ${BACKTEST.minOosTrades})`,
+    `- OOS expectancy: ${fmtR(oosR.expectancyR)} (need > 0 when OOS n is valid)`,
+    `- Walk-forward windows: ${run.windows.length} (need ≥ ${BACKTEST.minWalkForwardWindows})`,
+    `- Positive OOS windows: ${positiveOosWindows}`,
+    `- A+ / A sample: ${aPlus} / ${a} (need ≥ ${BACKTEST.minGradeSample} each)`,
+    "",
+    "## Forbidden after this file",
+    "",
+    "- Do not change confluence weights",
+    "- Do not change entry threshold",
+    "- Do not add filters to make this table look better",
+    "",
+    verdict === "EDGE_CONFIRMED" ? "Next: PAPER AUTO, 20–30 closed strategy trades." : "Next: investigate causes without curve-fitting. No PAPER AUTO.",
+    "",
+    "LIVE remains disabled.",
+    "",
+  ].join("\n");
+  writeBoth("reports/canonical-strategy-decision.md", decisionMd);
+
+  const certJson = {
+    verdict,
+    strategyPass: gate.strategyPass,
+    run: started,
+    issues: gate.issues,
+    oosTrades: oos.length,
+    oosExpectancyR: oosR.expectancyR,
+  };
+  const certMain = path.resolve("reports/canonical-cert.json");
+  const certCopy = path.resolve("ai-docs/reports/canonical-cert.json");
+  fs.writeFileSync(certMain, JSON.stringify(certJson, null, 2));
+  fs.writeFileSync(certCopy, JSON.stringify(certJson, null, 2));
 
   const jsonl = trades.map((t) => JSON.stringify(featureFromTrade(t))).join("\n") + (trades.length ? "\n" : "");
   const ev = path.resolve("ai-docs/reports/qa_evidence");

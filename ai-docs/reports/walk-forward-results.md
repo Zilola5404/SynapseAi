@@ -1,291 +1,306 @@
 # WALK-FORWARD RESULTS
 
-**Run:** 2026-09-02T20:34:01.820Z
+**Run:** 2026-09-03T22:28:32.298Z
 **Windows:** 5
 
 ## WINDOW 1
 
-TRAIN 2025-03-03T23:35:00.000Z → 2025-09-01T23:35:00.000Z
-VAL 2025-09-01T23:35:00.000Z → 2025-11-01T23:35:00.000Z
-OOS 2025-11-01T23:35:00.000Z → 2026-01-01T23:35:00.000Z
+TRAIN 2025-03-05T01:30:00.000Z → 2025-09-03T01:30:00.000Z
+VAL 2025-09-03T01:30:00.000Z → 2025-11-03T01:30:00.000Z
+OOS 2025-11-03T01:30:00.000Z → 2026-01-03T01:30:00.000Z
 
 ### Train
 
-Trades: **59** (SL 28 / TP 12 / TIME 19)
+Trades: **44** (SL 27 / TP 17 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -5.738R |
-| Average / Expectancy R | -0.097R |
-| Median R | -0.477R |
-| Win rate | 35.6% |
-| Profit factor (R) | 0.82 |
-| Max drawdown R | -8.420R |
-| Max consecutive losses | 5 |
-| Average win R | +1.220R |
-| Average loss R | -0.825R |
-| Net USDT (secondary) | -286.88 |
+| Total R | +0.185R |
+| Average / Expectancy R | +0.004R |
+| Median R | -1.015R |
+| Win rate | 38.6% |
+| Profit factor (R) | 1.01 |
+| Max drawdown R | -7.404R |
+| Max consecutive losses | 6 |
+| Average hold | 98.01 h |
+| Average win R | +1.592R |
+| Average loss R | -0.996R |
+| Net USDT (secondary) | 9.24 |
 
 ### Validation
 
-Trades: **19** (SL 9 / TP 2 / TIME 8)
+Trades: **13** (SL 11 / TP 2 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -5.018R |
-| Average / Expectancy R | -0.264R |
-| Median R | -0.431R |
-| Win rate | 42.1% |
-| Profit factor (R) | 0.50 |
-| Max drawdown R | -5.018R |
-| Max consecutive losses | 5 |
-| Average win R | +0.639R |
-| Average loss R | -0.921R |
-| Net USDT (secondary) | -250.89 |
+| Total R | -7.777R |
+| Average / Expectancy R | -0.598R |
+| Median R | -1.022R |
+| Win rate | 15.4% |
+| Profit factor (R) | 0.30 |
+| Max drawdown R | -8.931R |
+| Max consecutive losses | 9 |
+| Average hold | 28.05 h |
+| Average win R | +1.643R |
+| Average loss R | -1.006R |
+| Net USDT (secondary) | -388.87 |
 
 ### OOS
 
-Trades: **8** (SL 2 / TP 0 / TIME 6)
+Trades: **6** (SL 3 / TP 3 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | +0.735R |
-| Average / Expectancy R | +0.092R |
-| Median R | +0.333R |
+| Total R | +3.155R |
+| Average / Expectancy R | +0.526R |
+| Median R | +0.601R |
 | Win rate | 50.0% |
-| Profit factor (R) | 1.31 |
-| Max drawdown R | -1.063R |
+| Profit factor (R) | 2.74 |
+| Max drawdown R | -1.424R |
 | Max consecutive losses | 2 |
-| Average win R | +0.773R |
-| Average loss R | -0.589R |
-| Net USDT (secondary) | 36.75 |
+| Average hold | 157.29 h |
+| Average win R | +1.657R |
+| Average loss R | -0.606R |
+| Net USDT (secondary) | 157.73 |
 
 ## WINDOW 2
 
-TRAIN 2025-05-03T23:35:00.000Z → 2025-11-01T23:35:00.000Z
-VAL 2025-11-01T23:35:00.000Z → 2026-01-01T23:35:00.000Z
-OOS 2026-01-01T23:35:00.000Z → 2026-03-03T23:35:00.000Z
+TRAIN 2025-05-05T01:30:00.000Z → 2025-11-03T01:30:00.000Z
+VAL 2025-11-03T01:30:00.000Z → 2026-01-03T01:30:00.000Z
+OOS 2026-01-03T01:30:00.000Z → 2026-03-05T01:30:00.000Z
 
 ### Train
 
-Trades: **69** (SL 31 / TP 14 / TIME 24)
+Trades: **51** (SL 34 / TP 17 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -5.086R |
-| Average / Expectancy R | -0.074R |
-| Median R | -0.456R |
-| Win rate | 40.6% |
-| Profit factor (R) | 0.86 |
-| Max drawdown R | -10.786R |
-| Max consecutive losses | 6 |
-| Average win R | +1.072R |
-| Average loss R | -0.856R |
-| Net USDT (secondary) | -254.31 |
+| Total R | -6.656R |
+| Average / Expectancy R | -0.131R |
+| Median R | -1.018R |
+| Win rate | 33.3% |
+| Profit factor (R) | 0.80 |
+| Max drawdown R | -11.780R |
+| Max consecutive losses | 9 |
+| Average hold | 76.04 h |
+| Average win R | +1.589R |
+| Average loss R | -0.990R |
+| Net USDT (secondary) | -332.81 |
 
 ### Validation
 
-Trades: **8** (SL 2 / TP 0 / TIME 6)
+Trades: **6** (SL 3 / TP 3 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | +0.735R |
-| Average / Expectancy R | +0.092R |
-| Median R | +0.333R |
+| Total R | +3.155R |
+| Average / Expectancy R | +0.526R |
+| Median R | +0.601R |
 | Win rate | 50.0% |
-| Profit factor (R) | 1.31 |
-| Max drawdown R | -1.063R |
+| Profit factor (R) | 2.74 |
+| Max drawdown R | -1.424R |
 | Max consecutive losses | 2 |
-| Average win R | +0.773R |
-| Average loss R | -0.589R |
-| Net USDT (secondary) | 36.75 |
+| Average hold | 157.29 h |
+| Average win R | +1.657R |
+| Average loss R | -0.606R |
+| Net USDT (secondary) | 157.73 |
 
 ### OOS
 
-Trades: **12** (SL 5 / TP 5 / TIME 2)
+Trades: **11** (SL 6 / TP 5 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | +3.628R |
-| Average / Expectancy R | +0.302R |
-| Median R | +0.327R |
-| Win rate | 58.3% |
-| Profit factor (R) | 1.75 |
+| Total R | +2.197R |
+| Average / Expectancy R | +0.200R |
+| Median R | -0.521R |
+| Win rate | 45.5% |
+| Profit factor (R) | 1.38 |
 | Max drawdown R | -2.107R |
 | Max consecutive losses | 2 |
-| Average win R | +1.208R |
-| Average loss R | -0.965R |
-| Net USDT (secondary) | 181.41 |
+| Average hold | 24.10 h |
+| Average win R | +1.582R |
+| Average loss R | -0.952R |
+| Net USDT (secondary) | 109.85 |
 
 ## WINDOW 3
 
-TRAIN 2025-07-03T23:35:00.000Z → 2026-01-01T23:35:00.000Z
-VAL 2026-01-01T23:35:00.000Z → 2026-03-03T23:35:00.000Z
-OOS 2026-03-03T23:35:00.000Z → 2026-05-03T23:35:00.000Z
+TRAIN 2025-07-05T01:30:00.000Z → 2026-01-03T01:30:00.000Z
+VAL 2026-01-03T01:30:00.000Z → 2026-03-05T01:30:00.000Z
+OOS 2026-03-05T01:30:00.000Z → 2026-05-05T01:30:00.000Z
 
 ### Train
 
-Trades: **62** (SL 27 / TP 10 / TIME 25)
+Trades: **50** (SL 34 / TP 16 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -7.178R |
-| Average / Expectancy R | -0.116R |
-| Median R | -0.444R |
-| Win rate | 40.3% |
-| Profit factor (R) | 0.77 |
-| Max drawdown R | -9.625R |
-| Max consecutive losses | 8 |
-| Average win R | +0.981R |
-| Average loss R | -0.857R |
-| Net USDT (secondary) | -358.88 |
+| Total R | -7.231R |
+| Average / Expectancy R | -0.145R |
+| Median R | -1.018R |
+| Win rate | 32.0% |
+| Profit factor (R) | 0.78 |
+| Max drawdown R | -9.558R |
+| Max consecutive losses | 7 |
+| Average hold | 51.34 h |
+| Average win R | +1.609R |
+| Average loss R | -0.970R |
+| Net USDT (secondary) | -361.54 |
 
 ### Validation
 
-Trades: **12** (SL 5 / TP 5 / TIME 2)
+Trades: **11** (SL 6 / TP 5 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | +3.628R |
-| Average / Expectancy R | +0.302R |
-| Median R | +0.327R |
-| Win rate | 58.3% |
-| Profit factor (R) | 1.75 |
+| Total R | +2.197R |
+| Average / Expectancy R | +0.200R |
+| Median R | -0.521R |
+| Win rate | 45.5% |
+| Profit factor (R) | 1.38 |
 | Max drawdown R | -2.107R |
 | Max consecutive losses | 2 |
-| Average win R | +1.208R |
-| Average loss R | -0.965R |
-| Net USDT (secondary) | 181.41 |
+| Average hold | 24.10 h |
+| Average win R | +1.582R |
+| Average loss R | -0.952R |
+| Net USDT (secondary) | 109.85 |
 
 ### OOS
 
-Trades: **14** (SL 4 / TP 0 / TIME 10)
+Trades: **10** (SL 8 / TP 2 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -6.185R |
-| Average / Expectancy R | -0.442R |
-| Median R | -0.455R |
-| Win rate | 7.1% |
-| Profit factor (R) | 0.18 |
-| Max drawdown R | -6.264R |
-| Max consecutive losses | 11 |
-| Average win R | +1.402R |
-| Average loss R | -0.584R |
-| Net USDT (secondary) | -309.23 |
+| Total R | -4.404R |
+| Average / Expectancy R | -0.440R |
+| Median R | -1.016R |
+| Win rate | 20.0% |
+| Profit factor (R) | 0.43 |
+| Max drawdown R | -5.574R |
+| Max consecutive losses | 4 |
+| Average hold | 55.97 h |
+| Average win R | +1.652R |
+| Average loss R | -0.963R |
+| Net USDT (secondary) | -220.22 |
 
 ## WINDOW 4
 
-TRAIN 2025-09-02T23:35:00.000Z → 2026-03-03T23:35:00.000Z
-VAL 2026-03-03T23:35:00.000Z → 2026-05-03T23:35:00.000Z
-OOS 2026-05-03T23:35:00.000Z → 2026-07-03T23:35:00.000Z
+TRAIN 2025-09-04T01:30:00.000Z → 2026-03-05T01:30:00.000Z
+VAL 2026-03-05T01:30:00.000Z → 2026-05-05T01:30:00.000Z
+OOS 2026-05-05T01:30:00.000Z → 2026-07-05T01:30:00.000Z
 
 ### Train
 
-Trades: **39** (SL 16 / TP 7 / TIME 16)
+Trades: **30** (SL 20 / TP 10 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -0.655R |
-| Average / Expectancy R | -0.017R |
-| Median R | -0.005R |
-| Win rate | 48.7% |
-| Profit factor (R) | 0.96 |
-| Max drawdown R | -3.241R |
-| Max consecutive losses | 4 |
-| Average win R | +0.877R |
-| Average loss R | -0.866R |
-| Net USDT (secondary) | -32.73 |
+| Total R | -2.426R |
+| Average / Expectancy R | -0.081R |
+| Median R | -1.013R |
+| Win rate | 33.3% |
+| Profit factor (R) | 0.87 |
+| Max drawdown R | -6.638R |
+| Max consecutive losses | 5 |
+| Average hold | 52.45 h |
+| Average win R | +1.617R |
+| Average loss R | -0.930R |
+| Net USDT (secondary) | -121.29 |
 
 ### Validation
 
-Trades: **14** (SL 4 / TP 0 / TIME 10)
+Trades: **10** (SL 8 / TP 2 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -6.185R |
-| Average / Expectancy R | -0.442R |
-| Median R | -0.455R |
-| Win rate | 7.1% |
-| Profit factor (R) | 0.18 |
-| Max drawdown R | -6.264R |
-| Max consecutive losses | 11 |
-| Average win R | +1.402R |
-| Average loss R | -0.584R |
-| Net USDT (secondary) | -309.23 |
+| Total R | -4.404R |
+| Average / Expectancy R | -0.440R |
+| Median R | -1.016R |
+| Win rate | 20.0% |
+| Profit factor (R) | 0.43 |
+| Max drawdown R | -5.574R |
+| Max consecutive losses | 4 |
+| Average hold | 55.97 h |
+| Average win R | +1.652R |
+| Average loss R | -0.963R |
+| Net USDT (secondary) | -220.22 |
 
 ### OOS
 
-Trades: **10** (SL 1 / TP 2 / TIME 7)
+Trades: **10** (SL 6 / TP 4 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | +3.978R |
-| Average / Expectancy R | +0.398R |
-| Median R | +0.258R |
-| Win rate | 80.0% |
-| Profit factor (R) | 4.25 |
-| Max drawdown R | -1.017R |
-| Max consecutive losses | 1 |
-| Average win R | +0.651R |
-| Average loss R | -0.613R |
-| Net USDT (secondary) | 198.92 |
+| Total R | +2.177R |
+| Average / Expectancy R | +0.218R |
+| Median R | -0.425R |
+| Win rate | 40.0% |
+| Profit factor (R) | 1.49 |
+| Max drawdown R | -2.460R |
+| Max consecutive losses | 3 |
+| Average hold | 59.92 h |
+| Average win R | +1.644R |
+| Average loss R | -0.734R |
+| Net USDT (secondary) | 108.83 |
 
 ## WINDOW 5
 
-TRAIN 2025-11-02T23:35:00.000Z → 2026-05-03T23:35:00.000Z
-VAL 2026-05-03T23:35:00.000Z → 2026-07-03T23:35:00.000Z
-OOS 2026-07-03T23:35:00.000Z → 2026-09-02T23:35:00.000Z
+TRAIN 2025-11-04T01:30:00.000Z → 2026-05-05T01:30:00.000Z
+VAL 2026-05-05T01:30:00.000Z → 2026-07-05T01:30:00.000Z
+OOS 2026-07-05T01:30:00.000Z → 2026-09-04T01:30:00.000Z
 
 ### Train
 
-Trades: **34** (SL 11 / TP 5 / TIME 18)
+Trades: **26** (SL 17 / TP 9 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | -1.821R |
-| Average / Expectancy R | -0.054R |
-| Median R | -0.329R |
-| Win rate | 35.3% |
-| Profit factor (R) | 0.88 |
-| Max drawdown R | -4.699R |
-| Max consecutive losses | 5 |
-| Average win R | +1.079R |
-| Average loss R | -0.671R |
-| Net USDT (secondary) | -91.07 |
+| Total R | -0.738R |
+| Average / Expectancy R | -0.028R |
+| Median R | -0.763R |
+| Win rate | 34.6% |
+| Profit factor (R) | 0.95 |
+| Max drawdown R | -4.905R |
+| Max consecutive losses | 4 |
+| Average hold | 52.13 h |
+| Average win R | +1.611R |
+| Average loss R | -0.896R |
+| Net USDT (secondary) | -36.88 |
 
 ### Validation
 
-Trades: **10** (SL 1 / TP 2 / TIME 7)
+Trades: **10** (SL 6 / TP 4 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | +3.978R |
-| Average / Expectancy R | +0.398R |
-| Median R | +0.258R |
-| Win rate | 80.0% |
-| Profit factor (R) | 4.25 |
-| Max drawdown R | -1.017R |
-| Max consecutive losses | 1 |
-| Average win R | +0.651R |
-| Average loss R | -0.613R |
-| Net USDT (secondary) | 198.92 |
+| Total R | +2.177R |
+| Average / Expectancy R | +0.218R |
+| Median R | -0.425R |
+| Win rate | 40.0% |
+| Profit factor (R) | 1.49 |
+| Max drawdown R | -2.460R |
+| Max consecutive losses | 3 |
+| Average hold | 59.92 h |
+| Average win R | +1.644R |
+| Average loss R | -0.734R |
+| Net USDT (secondary) | 108.83 |
 
 ### OOS
 
-Trades: **19** (SL 7 / TP 6 / TIME 6)
+Trades: **14** (SL 7 / TP 7 / TIME 0)
 
 | Metric | Value |
 |---|---:|
-| Total R | +5.513R |
-| Average / Expectancy R | +0.290R |
-| Median R | +0.294R |
-| Win rate | 57.9% |
-| Profit factor (R) | 1.91 |
-| Max drawdown R | -3.643R |
+| Total R | +3.426R |
+| Average / Expectancy R | +0.245R |
+| Median R | +0.061R |
+| Win rate | 50.0% |
+| Profit factor (R) | 1.54 |
+| Max drawdown R | -3.678R |
 | Max consecutive losses | 4 |
-| Average win R | +1.050R |
-| Average loss R | -0.754R |
-| Net USDT (secondary) | 275.63 |
+| Average hold | 120.60 h |
+| Average win R | +1.396R |
+| Average loss R | -0.907R |
+| Net USDT (secondary) | 171.30 |
 
 Weights were not fit per window. This is frozen-parameter walk-forward.
