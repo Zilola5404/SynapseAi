@@ -29,18 +29,24 @@ function dedupeSort(rows: BinanceCandle[]) {
 }
 
 async function fetchJson(url: string, attempt = 0): Promise<unknown> {
-  const res = await fetch(url, {
-    headers: { "User-Agent": "SynapseCryptoAI/1.0" },
-    signal: AbortSignal.timeout(20000),
-  });
-  if (res.status === 429 || res.status === 418) {
-    if (attempt >= 6) throw new Error(`klines HTTP ${res.status}`);
-    const wait = Number(res.headers.get("retry-after") || 0) * 1000 || 400 * 2 ** attempt;
-    await new Promise((r) => setTimeout(r, wait));
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "SynapseCryptoAI/1.0" },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (res.status === 429 || res.status === 418) {
+      if (attempt >= 6) throw new Error(`klines HTTP ${res.status}`);
+      const wait = Number(res.headers.get("retry-after") || 0) * 1000 || 400 * 2 ** attempt;
+      await new Promise((r) => setTimeout(r, wait));
+      return fetchJson(url, attempt + 1);
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
+    return res.json();
+  } catch (err) {
+    if (attempt >= 6) throw err;
+    await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
     return fetchJson(url, attempt + 1);
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
-  return res.json();
 }
 
 export async function fetchKlinesRange(
@@ -114,8 +120,25 @@ export async function loadKlinesCached(
   if (cached && cached.startTime <= startTime && cached.endTime >= endTime - 5 * 60_000) {
     return cached.candles.filter((c) => c.openTime >= startTime && c.closeTime <= endTime);
   }
-  const fetchStart = cached ? Math.min(cached.startTime, startTime) : startTime;
-  const rows = await fetchKlinesRange(symbol, interval, fetchStart, endTime);
+  if (cached) {
+    let merged = cached.candles;
+    if (cached.startTime > startTime) {
+      const older = await fetchKlinesRange(symbol, interval, startTime, cached.startTime - 1);
+      merged = dedupeSort([...older, ...merged]);
+    }
+    if (cached.endTime < endTime - 5 * 60_000) {
+      const newer = await fetchKlinesRange(symbol, interval, cached.endTime + 1, endTime);
+      merged = dedupeSort([...merged, ...newer]);
+    }
+    const payload: CacheFile = {
+      startTime: merged[0]?.openTime || startTime,
+      endTime: merged[merged.length - 1]?.closeTime || endTime,
+      candles: merged,
+    };
+    fs.writeFileSync(file, JSON.stringify(payload));
+    return merged.filter((c) => c.openTime >= startTime && c.closeTime <= endTime);
+  }
+  const rows = await fetchKlinesRange(symbol, interval, startTime, endTime);
   const merged = dedupeSort([...(cached?.candles || []), ...rows]);
   const payload: CacheFile = {
     startTime: merged[0]?.openTime || startTime,

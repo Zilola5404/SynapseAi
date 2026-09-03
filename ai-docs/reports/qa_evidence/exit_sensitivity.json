@@ -1,0 +1,46 @@
+{
+  "started": "2026-09-03T10:25:30.780Z",
+  "holdRows": [
+    {
+      "label": "NO_TIME_EXIT",
+      "expectancyR": -0.022618904057970998,
+      "maxDrawdownR": -18.650176459999997,
+      "trades": 138
+    },
+    {
+      "label": "12h",
+      "expectancyR": -0.05023095086956521,
+      "maxDrawdownR": -12.548800759999999,
+      "trades": 138
+    },
+    {
+      "label": "24h",
+      "expectancyR": -0.013263736956521735,
+      "maxDrawdownR": -11.9056799,
+      "trades": 138
+    },
+    {
+      "label": "48h",
+      "expectancyR": -0.0366138156521739,
+      "maxDrawdownR": -15.86410402,
+      "trades": 138
+    },
+    {
+      "label": "72h",
+      "expectancyR": -0.057861109710144944,
+      "maxDrawdownR": -17.942267200000003,
+      "trades": 138
+    }
+  ],
+  "policy": {
+    "id": "NO_TIME_EXIT",
+    "variant": "B",
+    "maxHoldBars": 1000000,
+    "maxHoldMs": 0,
+    "reason": "Adopt a finite cap only if it beats NO_TIME_EXIT on expectancy R by >0.05 AND on max DD R (less severe). Then take the shortest such cap. Otherwise keep live parity: no time exit."
+  },
+  "allowed": 138,
+  "shadows": 135,
+  "decision": "B",
+  "decisionTitle": "OPTION B — EDGE IS REGIME DEPENDENT"
+}

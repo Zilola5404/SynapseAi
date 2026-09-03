@@ -7,9 +7,11 @@ import {
 } from "../intelligence/TradingIntelligenceEngine.js";
 import { SCAN_UNIVERSE } from "../intelligence/config.js";
 import type { BinanceCandle } from "../../binance.js";
-import { BACKTEST, DAY_MS, INTERVAL_MS } from "./config.js";
+import { BACKTEST, DAY_MS, EXIT_HOLD_VARIANTS, INTERVAL_MS } from "./config.js";
 import { simulateFill, type ExitReason, type FundingPoint } from "./fillModel.js";
 import { closedWindow, indexRangeForTime, rollingWalkForwardWindows, type WalkWindow } from "./mtf.js";
+import { classifyVeto, shadowSignalFromIntel, wouldTradeWithoutRegime } from "./shadowSignal.js";
+import type { StrategySignal } from "../types.js";
 
 export const FACTOR_KEYS = ["btc", "h4", "structure", "level", "liquidity", "bos", "volume", "rr"] as const;
 export type FactorKey = (typeof FACTOR_KEYS)[number];
@@ -64,6 +66,26 @@ export type FeatureRow = {
   resultR: number;
 };
 
+export type StoredEntry = {
+  symbol: string;
+  index: number;
+  t: number;
+  signal: StrategySignal;
+  kind: "allowed" | "regime_shadow";
+  grade: string;
+  confluenceScore: number;
+  marketRegime: string;
+  btcContext: string;
+  h4Trend: string;
+  factors: Record<string, boolean>;
+  rr: number;
+};
+
+export type WalkCollector = {
+  entries: StoredEntry[];
+  shadows: StoredEntry[];
+};
+
 export type BarEvent = {
   t: number;
   outcome: "snapshot_skip" | "rejected" | "signal" | "fill_reject" | "opened";
@@ -108,18 +130,6 @@ function bump(map: Record<string, number>, key: string) {
   map[key] = (map[key] || 0) + 1;
 }
 
-export function classifyVeto(textEn: string, textRu: string) {
-  const t = `${textEn} ${textRu}`.toLowerCase();
-  if (t.includes("not enough market data") || t.includes("недостаточно рыночных")) return "NO_DATA";
-  if (t.includes("no trend pullback") || t.includes("нет сетапа")) return "NO_SETUP";
-  if (t.includes("confluence") || t.includes("класс")) return "LOW_CONFLUENCE";
-  if (t.includes("volatility") || t.includes("волатил") || t.includes("ranging") || t.includes("режим")) return "REGIME";
-  if (t.includes("too close") || t.includes("нет места") || t.includes("no room")) return "NO_ROOM_FOR_TP";
-  if (t.includes("risk/reward")) return "LOW_RR";
-  if (t.includes("altcoin") || t.includes("альтам") || t.includes("альту")) return "BTC_BLOCKS_ALT_LONG";
-  return "OTHER";
-}
-
 export async function loadSymbolPack(
   symbol: string,
   startMs: number,
@@ -161,7 +171,8 @@ export function walkSlice(
   step = BACKTEST.step,
   windowId = 0,
   diag?: WindowDiag,
-  events?: BarEvent[]
+  events?: BarEvent[],
+  collector?: WalkCollector
 ): WalkTrade[] {
   const trades: WalkTrade[] = [];
   const reasons = diag?.rejectReasons || {};
@@ -212,6 +223,33 @@ export function walkSlice(
       const reason = veto ? classifyVeto(veto.textEn, veto.textRu) : "NO_SIGNAL";
       bump(reasons, reason);
       events?.push({ t, outcome: "rejected", reason });
+      if (collector && wouldTradeWithoutRegime(intel)) {
+        const shadow = shadowSignalFromIntel({
+          symbol: pack.symbol,
+          intel,
+          h1,
+          m5,
+          candles: slice,
+        });
+        if (shadow) {
+          const factors: Record<string, boolean> = {};
+          for (const line of shadow.scoreLines || []) factors[line.key] = Boolean(line.ok);
+          collector.shadows.push({
+            symbol: pack.symbol,
+            index: i,
+            t,
+            signal: shadow,
+            kind: "regime_shadow",
+            grade: shadow.setupGrade || intel.confluence.grade,
+            confluenceScore: intel.confluence.total,
+            marketRegime: intel.regime.regime,
+            btcContext: intel.context.marketMode,
+            h4Trend: intel.context.btcTrend4H,
+            factors,
+            rr: shadow.riskReward,
+          });
+        }
+      }
       i += step;
       continue;
     }
@@ -234,6 +272,20 @@ export function walkSlice(
       diag.tradesClosed += 1;
     }
     events?.push({ t, outcome: "opened" });
+    collector?.entries.push({
+      symbol: pack.symbol,
+      index: i,
+      t,
+      signal,
+      kind: "allowed",
+      grade: signal.setupGrade || "A",
+      confluenceScore: signal.confluenceScore || signal.qualityScore,
+      marketRegime: intel.regime.regime,
+      btcContext: intel.context.marketMode,
+      h4Trend: intel.context.btcTrend4H,
+      factors,
+      rr: signal.riskReward,
+    });
     trades.push({
       symbol: pack.symbol,
       t,
@@ -342,7 +394,7 @@ function diagFromEvents(
   });
 }
 
-export function walkPackWindows(pack: SymbolPack, windows: WalkWindow[], step = BACKTEST.step) {
+export function walkPackWindows(pack: SymbolPack, windows: WalkWindow[], step = BACKTEST.step, collector?: WalkCollector) {
   const usable = indexRangeForTime(
     pack.m5,
     windows[0]?.trainStart || pack.m5[0]?.openTime || 0,
@@ -351,7 +403,7 @@ export function walkPackWindows(pack: SymbolPack, windows: WalkWindow[], step = 
   const events: BarEvent[] = [];
   const raw =
     usable.start >= 0 && usable.end > usable.start
-      ? walkSlice(pack, usable.start, usable.end + 1, "train", step, 0, undefined, events)
+      ? walkSlice(pack, usable.start, usable.end + 1, "train", step, 0, undefined, events, collector)
       : [];
   const trades = raw.map((t) => tagTrade(t, windows));
   const diags: WindowDiag[] = [];
@@ -443,5 +495,114 @@ export async function runUniverseWalk(
       ? `rolling walk-forward train ${BACKTEST.trainDays}d / val ${BACKTEST.valDays}d / oos ${BACKTEST.oosDays}d shift ${BACKTEST.shiftDays}d`
       : "fallback 50/25/25 — history too short for 6/2/2 walk-forward",
     fundingIncluded: Object.values(loaded).some((r) => r.funding > 0),
+  };
+}
+
+function tradeFromStored(e: StoredEntry, fill: NonNullable<ReturnType<typeof simulateFill>>): WalkTrade {
+  return {
+    symbol: e.symbol,
+    t: e.t,
+    grade: e.grade,
+    direction: e.signal.direction,
+    pnl: fill.pnl,
+    fees: fill.fees,
+    funding: fill.funding,
+    rMultiple: fill.resultR,
+    resultR: fill.resultR,
+    exit: fill.exitReason,
+    bucket: "train",
+    windowId: 0,
+    factors: e.factors,
+    entry: fill.entry,
+    sl: fill.sl,
+    tp1: fill.tp1,
+    tp2: fill.tp2,
+    tp3: fill.tp3,
+    exitPrice: fill.exit,
+    timeInTradeMs: fill.timeInTradeMs,
+    maeR: fill.maeR,
+    mfeR: fill.mfeR,
+    ambiguousSlTpBar: fill.ambiguousSlTpBar,
+    tpHits: fill.tpHits,
+    confluenceScore: e.confluenceScore,
+    marketRegime: e.marketRegime,
+    btcContext: e.btcContext,
+    h4Trend: e.h4Trend,
+    rr: e.rr,
+  };
+}
+
+export async function runParityWalk(
+  symbols: readonly string[] = SCAN_UNIVERSE,
+  step = BACKTEST.step,
+  months = BACKTEST.historyMonths
+) {
+  logger.level = "error";
+  const endMs = Date.now();
+  const startMs = endMs - months * 30.4375 * DAY_MS;
+  const btc = await loadBtcContext(startMs, endMs);
+  const variants: Record<string, WalkTrade[]> = {};
+  for (const v of EXIT_HOLD_VARIANTS) variants[v.label] = [];
+  const shadow24: WalkTrade[] = [];
+  const diags: WindowDiag[] = [];
+  const loaded: Record<string, { m5: number; first: string; last: string; funding: number }> = {};
+  let windows: WalkWindow[] = [];
+  let entryCount = 0;
+  let shadowCount = 0;
+
+  for (const symbol of symbols) {
+    const pack = await loadSymbolPack(symbol, startMs, endMs, symbol === "BTCUSDT" ? undefined : btc);
+    const first = pack.m5[0]?.openTime || startMs;
+    const last = pack.m5[pack.m5.length - 1]?.closeTime || endMs;
+    loaded[symbol] = {
+      m5: pack.m5.length,
+      first: new Date(first).toISOString(),
+      last: new Date(last).toISOString(),
+      funding: pack.funding.length,
+    };
+    if (!windows.length) {
+      const usableStart = first + BACKTEST.lookback * INTERVAL_MS["5m"];
+      windows = rollingWalkForwardWindows(usableStart, last, BACKTEST);
+    }
+    const collector: WalkCollector = { entries: [], shadows: [] };
+    const walked = windows.length
+      ? walkPackWindows(pack, windows, step, collector)
+      : { trades: walkPack(pack, step), diags: [] as WindowDiag[] };
+    diags.push(...walked.diags);
+    entryCount += collector.entries.length;
+    shadowCount += collector.shadows.length;
+    for (const v of EXIT_HOLD_VARIANTS) {
+      for (const e of collector.entries) {
+        const fill = simulateFill(pack.m5, e.index, e.signal, pack.funding, v.bars);
+        if (!fill) continue;
+        variants[v.label].push(tagTrade(tradeFromStored(e, fill), windows));
+      }
+    }
+    for (const e of collector.shadows) {
+      const fill = simulateFill(pack.m5, e.index, e.signal, pack.funding, 288);
+      if (!fill) continue;
+      shadow24.push(tagTrade(tradeFromStored(e, fill), windows));
+    }
+  }
+
+  const historyDays = Math.min(
+    ...Object.values(loaded).map((row) => {
+      const a = Date.parse(row.first);
+      const b = Date.parse(row.last);
+      return (b - a) / DAY_MS;
+    })
+  );
+
+  return {
+    variants,
+    shadows: shadow24,
+    windows,
+    diags,
+    loaded,
+    historyDays,
+    entryCount,
+    shadowCount,
+    months,
+    step,
   };
 }

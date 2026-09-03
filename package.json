@@ -16,6 +16,7 @@
     "db:generate": "prisma generate",
     "test": "tsx scripts/test-stages.ts",
     "backtest": "tsx scripts/run-backtest.ts",
+    "regime-exit": "tsx scripts/run-regime-exit.ts",
     "test:backend": "tsx scripts/test-stages.ts",
     "test:stage1:db": "tsx scripts/test-stage1-db.ts",
     "test:stage1": "tsx server/crypto/apiKeys.test.ts",

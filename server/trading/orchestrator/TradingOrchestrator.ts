@@ -32,6 +32,7 @@ import { autoAllowed } from "../intelligence/NoTradeEngine.js";
 import { INTEL } from "../intelligence/config.js";
 import { TP_SCALE_OUT } from "../tpPolicy.js";
 import { KILL_SWITCH_POLICY } from "../killSwitchPolicy.js";
+import { EXIT_POLICY } from "../exitPolicy.js";
 import { fetchLastPrice } from "../../market/markPrice.js";
 import { minTradeQty, splitScaleOutQty, roundQty } from "../../exchanges/binance/precision.js";
 import { runTestnetPreflight } from "../certification/testnetPreflight.js";
@@ -1264,6 +1265,10 @@ export class TradingOrchestrator {
         if (pos.closeRequestedAt && Date.now() - pos.closeRequestedAt.getTime() > 20_000) {
           await this.retryClose(pos).catch((err) => logger.warn({ err }, "retry close"));
         }
+        continue;
+      }
+      if (EXIT_POLICY.maxHoldMs > 0 && pos.openedAt && Date.now() - pos.openedAt.getTime() >= EXIT_POLICY.maxHoldMs) {
+        await this.closePosition(pos.userId, pos.id, "TIME_EXIT").catch((err) => logger.warn({ err }, "time exit"));
         continue;
       }
       if (!pos.isPaperTrade) {

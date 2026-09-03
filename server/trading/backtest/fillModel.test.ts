@@ -60,6 +60,10 @@ assert.equal(timed.exitReason, "TIME");
 assert.ok(timed.mfeR >= 0);
 assert.ok(timed.maeR <= 0);
 
+const eod = simulateFill(pathTime, 0, longSignal(), [], 1_000_000);
+assert.ok(eod);
+assert.equal(eod.exitReason, "EOD");
+
 const pathMfe = [
   signalBar,
   bar(1, 100, 103, 99.2, 101),

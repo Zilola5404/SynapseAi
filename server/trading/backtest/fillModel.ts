@@ -6,7 +6,7 @@ import type { StrategySignal } from "../types.js";
 import { BACKTEST } from "./config.js";
 
 export type FundingPoint = { time: number; rate: number };
-export type ExitReason = "SL" | "TP1" | "TP2" | "TP3" | "TIME";
+export type ExitReason = "SL" | "TP1" | "TP2" | "TP3" | "TIME" | "EOD";
 
 export type FillResult = {
   entry: number;
@@ -60,7 +60,7 @@ function fundingCash(dir: 1 | -1, qty: number, mark: number, entryTime: number, 
  * - Entry: next bar open ± slippage (no same-bar fill).
  * - Same bar touches SL and the next TP: SL wins (worst-case).
  * - Partial TP 30/30/40 from INTEL.scaleOut (read-only).
- * - TIME after BACKTEST.maxHoldBars.
+ * - TIME if a finite hold cap is hit; EOD if the series ends first. Default cap is canonical EXIT_POLICY (no time kill).
  */
 export function simulateFill(
   m5: BinanceCandle[],
@@ -156,7 +156,9 @@ export function simulateFill(
   if (remaining > 1e-12) {
     addLeg(exitPrice, remaining);
     remaining = 0;
-    exitReason = "TIME";
+    const capIndex = entryIndex + maxHoldBars;
+    const hitCap = capIndex <= m5.length - 1 && exitIndex >= capIndex;
+    exitReason = hitCap ? "TIME" : "EOD";
   }
 
   const vwap = closedFrac > 0 ? weightedExit / closedFrac : exitPrice;

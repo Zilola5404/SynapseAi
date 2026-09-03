@@ -3,8 +3,8 @@ export const BACKTEST = {
   historyMonths: 18,
   lookback: 500,
   step: 6,
-  /** 24h on 5m. Live engine has no TIME kill; this is a documented sim cap. */
-  maxHoldBars: 288,
+  /** Live has no TIME kill. Canonical after exit-sensitivity: NO_TIME_EXIT. */
+  maxHoldBars: 1_000_000,
   trainDays: 182,
   valDays: 61,
   oosDays: 61,
@@ -17,7 +17,17 @@ export const BACKTEST = {
   riskPct: 0.005,
   sameBarRule: "WORST_CASE_SL" as const,
   entryRule: "NEXT_BAR_OPEN_PLUS_SLIPPAGE" as const,
+  /** Bars beyond this are treated as no time cap. */
+  uncappedHoldBars: 1_000_000,
 };
+
+export const EXIT_HOLD_VARIANTS: { label: string; hours: number | null; bars: number }[] = [
+  { label: "NO_TIME_EXIT", hours: null, bars: 1_000_000 },
+  { label: "12h", hours: 12, bars: 144 },
+  { label: "24h", hours: 24, bars: 288 },
+  { label: "48h", hours: 48, bars: 576 },
+  { label: "72h", hours: 72, bars: 864 },
+];
 
 export const DAY_MS = 86_400_000;
 export const INTERVAL_MS: Record<string, number> = {
