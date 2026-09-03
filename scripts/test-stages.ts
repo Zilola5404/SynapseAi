@@ -38,6 +38,7 @@ const tests = [
   "server/telegram/testOrderError.test.ts",
   "server/trading/tradeSource.test.ts",
   "server/trading/strategy/canonicalCert.test.ts",
+  "server/exchanges/binance/retry.test.ts",
 ];
 
 async function runFile(file: string): Promise<number> {

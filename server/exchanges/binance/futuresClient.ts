@@ -6,6 +6,12 @@ import {
 } from "../../binance.js";
 import { logger } from "../../logger.js";
 import { BINANCE_RECV_WINDOW, binanceTimestamp, ensureBinanceTime, syncBinanceServerTime } from "./timeSync.js";
+import {
+  BINANCE_SIGNED_ATTEMPTS,
+  binanceRetryDelayMs,
+  isRetryableBinanceHttp,
+  isRetryableBinanceNetwork,
+} from "./retry.js";
 
 let resolvedTestnetBase: string | undefined;
 
@@ -50,6 +56,8 @@ export interface FuturesOrderSnapshot {
   reduceOnly: boolean;
 }
 
+let signedConsecutiveFailures = 0;
+
 async function signed(
   params: {
     method: "GET" | "POST" | "DELETE" | "PUT";
@@ -64,52 +72,79 @@ async function signed(
   hostTried = false
 ): Promise<{ ok: boolean; status: number; data: any; text: string }> {
   const base = futuresRestBase(params.isTestnet, params.baseUrl);
-  await ensureBinanceTime(params.isTestnet, true);
-  const pairs: string[] = [];
-  for (const [k, v] of Object.entries(params.query)) {
-    if (v === undefined || v === "") continue;
-    pairs.push(`${k}=${v}`);
-  }
-  pairs.push(`timestamp=${binanceTimestamp()}`);
-  pairs.push(`recvWindow=${BINANCE_RECV_WINDOW}`);
-  const qs = pairs.join("&");
-  const signature = createBinanceSignature(qs, params.apiSecret);
-  const url = `${base}${params.path}?${qs}&signature=${signature}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const res = await fetch(url, {
-      method: params.method,
-      headers: { "X-MBX-APIKEY": params.apiKey, "User-Agent": "SynapseCryptoAI/1.0" },
-      signal: controller.signal,
-    });
-    const text = await res.text();
-    let data: any = {};
+  let lastNetworkErr: unknown;
+  for (let attempt = 1; attempt <= BINANCE_SIGNED_ATTEMPTS; attempt++) {
+    await ensureBinanceTime(params.isTestnet, true);
+    const pairs: string[] = [];
+    for (const [k, v] of Object.entries(params.query)) {
+      if (v === undefined || v === "") continue;
+      pairs.push(`${k}=${v}`);
+    }
+    pairs.push(`timestamp=${binanceTimestamp()}`);
+    pairs.push(`recvWindow=${BINANCE_RECV_WINDOW}`);
+    const qs = pairs.join("&");
+    const signature = createBinanceSignature(qs, params.apiSecret);
+    const url = `${base}${params.path}?${qs}&signature=${signature}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
     try {
-      data = text ? JSON.parse(text) : {};
-    } catch {
-      data = { raw: text };
+      const res = await fetch(url, {
+        method: params.method,
+        headers: { "X-MBX-APIKEY": params.apiKey, "User-Agent": "SynapseCryptoAI/1.0" },
+        signal: controller.signal,
+      });
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { raw: text };
+      }
+      if (!res.ok && Number(data?.code) === -1021 && !retried) {
+        logger.warn("Binance -1021 timestamp, resync server time and retry once");
+        await syncBinanceServerTime(params.isTestnet, true, base);
+        return signed(params, true, hostTried);
+      }
+      if (!res.ok && Number(data?.code) === -2015 && params.isTestnet && !hostTried) {
+        const alt = alternateTestnetBase(base);
+        logger.warn({ from: base, to: alt }, "Binance -2015, trying alternate Futures Testnet/Demo host");
+        await syncBinanceServerTime(true, true, alt);
+        return signed({ ...params, baseUrl: alt }, retried, true);
+      }
+      if (!res.ok && isRetryableBinanceHttp(res.status) && attempt < BINANCE_SIGNED_ATTEMPTS) {
+        logger.warn({ attempt, status: res.status, path: params.path }, "Binance signed HTTP retry");
+        await new Promise((r) => setTimeout(r, binanceRetryDelayMs(attempt)));
+        continue;
+      }
+      if (res.ok) {
+        signedConsecutiveFailures = 0;
+        if (params.isTestnet) resolvedTestnetBase = base;
+      } else if (isRetryableBinanceHttp(res.status)) {
+        signedConsecutiveFailures += 1;
+        if (signedConsecutiveFailures >= 3) {
+          logger.warn({ failures: signedConsecutiveFailures, path: params.path }, "Binance signed circuit: 3 consecutive failures");
+        }
+      }
+      return { ok: res.ok, status: res.status, data, text };
+    } catch (err) {
+      lastNetworkErr = err;
+      const message = err instanceof Error ? err.message : String(err);
+      if (isRetryableBinanceNetwork(err) && attempt < BINANCE_SIGNED_ATTEMPTS) {
+        logger.warn({ attempt, path: params.path, err: message }, "Binance signed network retry");
+        await new Promise((r) => setTimeout(r, binanceRetryDelayMs(attempt)));
+        continue;
+      }
+      signedConsecutiveFailures += 1;
+      if (signedConsecutiveFailures >= 3) {
+        logger.warn({ failures: signedConsecutiveFailures, path: params.path }, "Binance signed circuit: 3 consecutive failures");
+      }
+      logger.warn({ err: message, path: params.path }, "futures signed request failed");
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    if (!res.ok && Number(data?.code) === -1021 && !retried) {
-      logger.warn("Binance -1021 timestamp, resync server time and retry once");
-      await syncBinanceServerTime(params.isTestnet, true, base);
-      return signed(params, true, hostTried);
-    }
-    if (!res.ok && Number(data?.code) === -2015 && params.isTestnet && !hostTried) {
-      const alt = alternateTestnetBase(base);
-      logger.warn({ from: base, to: alt }, "Binance -2015, trying alternate Futures Testnet/Demo host");
-      await syncBinanceServerTime(true, true, alt);
-      return signed({ ...params, baseUrl: alt }, retried, true);
-    }
-    if (res.ok && params.isTestnet) resolvedTestnetBase = base;
-    return { ok: res.ok, status: res.status, data, text };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn({ err: message, path: params.path }, "futures signed request failed");
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastNetworkErr instanceof Error ? lastNetworkErr : new Error("Binance signed request failed");
 }
 
 function snapshot(data: any, fallbackClientId: string): FuturesOrderSnapshot {
@@ -316,18 +351,24 @@ export async function pingFuturesRest(isTestnet = true): Promise<boolean> {
   const bases = isTestnet
     ? [...new Set([futuresRestBase(true), BINANCE_FUTURES_TESTNET_URL_DEFAULT, BINANCE_FUTURES_TESTNET_URL_LEGACY])]
     : [getBinanceBaseUrl(false, true)];
-  for (const base of bases) {
-    try {
-      const res = await fetch(`${base}/fapi/v1/ping`, {
-        signal: AbortSignal.timeout(4000),
-        headers: { "User-Agent": "SynapseCryptoAI/1.0" },
-      });
-      if (res.ok) {
-        if (isTestnet) resolvedTestnetBase = base;
-        return true;
+  for (let attempt = 1; attempt <= BINANCE_SIGNED_ATTEMPTS; attempt++) {
+    for (const base of bases) {
+      try {
+        const res = await fetch(`${base}/fapi/v1/ping`, {
+          signal: AbortSignal.timeout(4000),
+          headers: { "User-Agent": "SynapseCryptoAI/1.0" },
+        });
+        if (res.ok) {
+          if (isTestnet) resolvedTestnetBase = base;
+          return true;
+        }
+        if (!isRetryableBinanceHttp(res.status)) continue;
+      } catch {
+        /* try next host / attempt */
       }
-    } catch {
-      /* try next host */
+    }
+    if (attempt < BINANCE_SIGNED_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, binanceRetryDelayMs(attempt)));
     }
   }
   return false;

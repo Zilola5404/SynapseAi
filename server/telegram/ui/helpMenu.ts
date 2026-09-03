@@ -18,6 +18,8 @@ export function helpHome(lang: LocaleCode) {
     .row()
     .text(lang === "en" ? "⚠️ Risks" : "⚠️ Риски", "help_risks")
     .row()
+    .text(lang === "en" ? "🩺 System status" : "🩺 Состояние системы", "system")
+    .row()
     .text(lang === "en" ? "📞 Support" : "📞 Поддержка", "help_support");
   navRow(kb.row(), lang);
   return { text, markup: kb };

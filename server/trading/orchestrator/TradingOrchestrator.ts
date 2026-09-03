@@ -332,8 +332,11 @@ export class TradingOrchestrator {
       const user = await prisma.user.findUnique({ where: { id: userId }, include: { riskSettings: true } });
       if (!user?.riskSettings) throw new Error("Нет профиля риска");
 
-      if (!marketDataProvider.canOpenNewTrades() && source === "auto") {
-        logger.warn({ symbol: signal.symbol, state: marketDataProvider.dataState() }, "[AUTO] Market data not fresh — no trade");
+      if (!marketDataProvider.canOpenNewTrades() && !opts?.skipAi) {
+        logger.warn(
+          { symbol: signal.symbol, source, state: marketDataProvider.dataState() },
+          "Market data not fresh — new trades blocked"
+        );
         throw new Error("MARKET DATA DEGRADED — no new trades");
       }
 
@@ -906,7 +909,7 @@ export class TradingOrchestrator {
     try {
       const exec = await providerFor(user);
       if (!pos.isPaperTrade) {
-        await exec.cancelProtective?.({ symbol: pos.symbol, slOrderId: pos.slOrderId, tpOrderId: pos.tpOrderId });
+        await exec.cancelAllOrders?.(pos.symbol);
       }
       await transitionOrder(tracked.id, "SUBMITTED");
       const fill = await exec.closeMarket({

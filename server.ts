@@ -19,7 +19,7 @@ import { authRouter } from "./server/routes/auth.js";
 import { credentialsRouter } from "./server/routes/credentials.js";
 import { tradingRouter } from "./server/routes/trading.js";
 import { bootLog } from "./server/bootLog.js";
-import { startTelegramBot, stopTelegramBot } from "./server/telegram/bot.js";
+import { startTelegramBot, stopTelegramBot, scheduleTelegramReconnect } from "./server/telegram/bot.js";
 import { startTradingEngine, stopTradingEngine, isEngineReady } from "./server/services/tradingEngine.js";
 import { printReadyBanner } from "./server/readyBanner.js";
 import { telegramRuntime } from "./server/telegram/runtime.js";
@@ -948,6 +948,7 @@ async function boot() {
   }
   bootLog("[TELEGRAM] starting...");
   await startTelegramBot().catch((err) => logger.error({ err }, "Telegram bot boot failed"));
+  if (!telegramRuntime.polling) scheduleTelegramReconnect();
   bootLog(`[POLLING] ${telegramRuntime.polling ? "OK" : "FAIL"}`);
   bootLog("[HTTP] starting (Vite may take a few seconds in dev)...");
   await startServer();

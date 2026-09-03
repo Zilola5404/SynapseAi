@@ -1,8 +1,8 @@
 # 24h soak
 
-**Вердикт:** **FAIL** — 24h soak is not completed on this pass.
+**Вердикт:** **FAIL** (24h criterion not yet met)
 
-Canonical walk-forward / OOS certification was run instead of claiming a new soak. The previous snapshot (2026-09-02) had **0.80 h** uptime. Calendar time since that pid is **not** process uptime.
+A live TESTNET process was not held for ≥ 24 hours in this release pass.
 
 PASS only if **one process** holds `uptime >= 24h` with:
 
@@ -11,5 +11,8 @@ PASS only if **one process** holds `uptime >= 24h` with:
 - No stuck workers
 - No duplicate orders
 - No unsafe LIVE trading
+- New trades blocked when market data is stale; open positions still monitored
 
-Start: `npm run dev` and leave it running 24h, then update this file from a real health snapshot.
+After `RELEASE: MVP v1.0`, start `npm run dev` and leave that process running. Update this file from a real `/health` snapshot when uptime ≥ 24h.
+
+**Do not** treat calendar time since the last commit as process uptime.

@@ -3,7 +3,9 @@ import { closeReasonLabel, friendlyError, money, sideLabel } from "./ui/format.j
 import { tradeClosedMessage, tradeOpenedMessage } from "./messages.js";
 import { matchReply } from "./ui/keyboards.js";
 import { sizeSettingsScreen, sizeWhyScreen } from "./ui/sizeMenu.js";
-import { signalOfferText } from "./ui/signalMenu.js";
+import { signalOfferText, noTradeText } from "./ui/signalMenu.js";
+import { historyList } from "./ui/historyMenu.js";
+import { homeScreen } from "./ui/mainMenu.js";
 
 assert.equal(sideLabel("LONG", "ru"), "Покупка 📈");
 assert.equal(sideLabel("SHORT", "ru"), "Продажа 📉");
@@ -35,6 +37,7 @@ assert.equal(closeReasonLabel("MANUAL", "ru"), "Закрыта пользова�
 assert.match(tradeClosedMessage("ru", { symbol: "BTCUSDT", pnl: 18, fees: 2, reason: "TAKE_PROFIT", grossPnl: 20, entryFee: 1, exitFee: 1 }), /СДЕЛКА ЗАКРЫТА[\s\S]*Комиссия входа[\s\S]*Комиссия выхода/);
 assert.equal(matchReply("📊 Рынок", "ru"), "market");
 assert.equal(matchReply("ℹ️ Помощь", "ru"), "help");
+assert.equal(matchReply("🧪 TESTNET", "ru"), "testnet");
 assert.equal(matchReply("🤖 Автоторговля", "ru"), "auto_menu");
 assert.match(sizeSettingsScreen("ru", {
   positionSizeMode: "AUTO",
@@ -80,7 +83,7 @@ assert.match(
     potentialProfitUsdt: 100,
     expiresAt: new Date(Date.now() + 60_000),
   }, "confirm"),
-  /ТОРГОВАЯ ВОЗМОЖНОСТЬ[\s\S]*LONG[\s\S]*не прогноз прибыли/
+  /ТОРГОВАЯ ВОЗМОЖНОСТЬ[\s\S]*Покупка \(LONG\)[\s\S]*не гарантия прибыли/
 );
 
 assert.doesNotMatch(
@@ -104,6 +107,20 @@ assert.doesNotMatch(
     expiresAt: new Date(Date.now() + 60_000),
   }, "confirm"),
   /гарантированн|100%|high accuracy|profitable signal/i
+);
+
+assert.match(noTradeText("ru"), /Сейчас качественного сигнала нет[\s\S]*Недостаточно подтверждений/);
+assert.match(
+  homeScreen({ lang: "ru", mode: "TESTNET", autoOn: false, openCount: 0 }).text,
+  /Добро пожаловать в SynapseAI[\s\S]*автоматическая торговля выключена/
+);
+assert.match(
+  historyList(
+    "ru",
+    [{ id: "1", symbol: "BTCUSDT", pnl: 12.45, closedAt: new Date(), entry: 67000, exit: 67500, reason: "TAKE_PROFIT" }],
+    "today"
+  ).text,
+  /Прибыль[\s\S]*\+\$12\.45[\s\S]*Take Profit/
 );
 
 console.log("  PASS  Telegram UX: Russian copy, friendly errors, no profit promises");

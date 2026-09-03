@@ -9,25 +9,15 @@ export function homeScreen(params: {
   openCount: number;
   locked?: boolean;
 }) {
-  const mode = params.mode === "LIVE" ? "LIVE" : params.mode === "TESTNET" ? "TESTNET" : "PAPER";
   const lock = params.locked
     ? params.lang === "en"
       ? "\n🔒 Trading is locked after an emergency stop."
       : "\n🔒 Торговля заблокирована после экстренной остановки."
     : "";
-  const modeLine = mode === "PAPER" ? "📝 PAPER" : mode === "LIVE" ? "💰 LIVE" : "🧪 TESTNET";
-  const autoLine =
-    params.lang === "en"
-      ? params.autoOn
-        ? "🤖 Auto trading: on"
-        : "🤖 Auto trading: off"
-      : params.autoOn
-        ? "🤖 Автоторговля: включена"
-        : "🤖 Автоторговля: выключена";
   const text =
     params.lang === "en"
-      ? `🤖 <b>Welcome to Synapse AI</b>\n\nI analyse the crypto market,\nlook for trading situations and help\ncontrol risk.\n\nCurrent mode:\n\n${modeLine}\n${autoLine}\n🛡 Risk control: on\n💼 Open trades: ${params.openCount}${lock}\n\nChoose an action:`
-      : `🤖 <b>Добро пожаловать в Synapse AI</b>\n\nЯ анализирую криптовалютный рынок,\nищу торговые ситуации и помогаю\nконтролировать риск.\n\nТекущий режим:\n\n${modeLine}\n${autoLine}\n🛡 Риск-контроль: включён\n💼 Открытых сделок: ${params.openCount}${lock}\n\nВыберите действие:`;
+      ? `👋 <b>Welcome to SynapseAI</b>\n\nI analyse the crypto market,\nfind trading opportunities\nand help control risk.\n\n⚠️ Auto trading is off.\n\nYou can:\n\n📊 View market analysis\n📡 Get trading signals\n🧪 Check TESTNET\n📈 View history${lock}`
+      : `👋 <b>Добро пожаловать в SynapseAI</b>\n\nЯ анализирую криптовалютный рынок,\nнахожу торговые возможности\nи помогаю контролировать риски.\n\n⚠️ Сейчас автоматическая торговля выключена.\n\nВы можете:\n\n📊 Посмотреть анализ рынка\n📡 Получить торговые сигналы\n🧪 Проверить работу на TESTNET\n📈 Смотреть историю${lock}`;
   return { text, markup: homeInline(params.autoOn, params.lang) };
 }
 

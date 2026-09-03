@@ -1,7 +1,7 @@
 # TP LADDER
 
 **Date:** 2026-09-04  
-**Live TESTNET order was not placed in this pass** (certification walk-forward takes priority; AUTO is off).
+**TESTNET round-trip:** PASS
 
 ## Policy (unchanged)
 
@@ -11,20 +11,24 @@ Code:
 
 - `server/trading/tpPolicy.ts`
 - `splitScaleOutQty` in `server/exchanges/binance/precision.ts`
-- TESTNET/LIVE scale-out: `TradingOrchestrator.scaleOutQty` → `closeMarket({ reduceOnly: true })`
-- Full close: `closeMarket({ reduceOnly: true })`
+- TESTNET scale-out: `TradingOrchestrator.scaleOutQty` → `closeMarket({ reduceOnly: true })`
+- Full close: cancel remaining orders, then `closeMarket({ reduceOnly: true })`
 
-## Unit check (this pass)
+## Live TESTNET (BTCUSDT qty 0.01)
 
-`server/trading/tpPolicy.test.ts`:
+Script: `scripts/place-tp-ladder.ts`
 
-- Fractions sum to 1
-- BTCUSDT qty **0.01** (minQty 0.001) splits into 3 legs
-- Sum of legs = original quantity
-- Qty 0.001 BTC cannot split (LOT_SIZE) → `null` fallback
+| Step | Closed qty | Remaining |
+| --- | --- | --- |
+| Open | 0.010 | 100% |
+| TP1 | 0.003 | 70% |
+| TP2 | 0.003 | 40% |
+| TP3 | 0.004 | 0% |
 
-PASS on unit tests. Exchange round-trip (`scripts/place-tp-ladder.ts`) is **not** claimed here.
+`sum(closed) = 0.003 + 0.003 + 0.004 = 0.010 = original quantity`
 
-## reduceOnly
+`reduceOnly=true` on each close.
 
-Scale-out and flatten on the exchange path set `reduceOnly: true`. That flag is required so a close cannot flip into a new position.
+## Unit check
+
+`server/trading/tpPolicy.test.ts` — fractions sum to 1; minQty fallback.

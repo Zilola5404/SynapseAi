@@ -1,3 +1,8 @@
+/**
+ * RESEARCH_BASELINE_V1 — frozen for MVP.
+ * Do not change confluence weights, entry logic, thresholds, regime, SL/TP
+ * without a new research pass. Tag: synapse-baseline-v1
+ */
 /** Configurable thresholds. Not win-rate claims. */
 export const INTEL = {
   minRr: 2,

@@ -24,6 +24,7 @@ import type { Update } from "@grammyjs/types";
 export { telegramRuntime };
 
 let runningBot: Bot | null = null;
+let telegramReconnectTimer: NodeJS.Timeout | null = null;
 
 function neverSilent(name: string, fn: (ctx: any) => Promise<void>) {
   return async (ctx: any) => {
@@ -43,6 +44,7 @@ function neverSilent(name: string, fn: (ctx: any) => Promise<void>) {
 }
 
 export async function startTelegramBot() {
+  if (telegramRuntime.polling && runningBot) return runningBot;
   const token = config.telegramBotToken;
   if (!token) {
     bootLog("[TELEGRAM:FATAL]");
@@ -66,13 +68,13 @@ export async function startTelegramBot() {
   bootLog(`[TELEGRAM] proxy: ${config.telegramProxy || "none (direct)"}`);
   const probe = await probeTelegramApi(10000);
   if (!probe.ok) {
-    bootLog("[TELEGRAM:FATAL]");
-    bootLog("Cannot reach Telegram API.");
+    bootLog("[TELEGRAM] API unreachable. Workers and HTTP stay up. Retrying every 30s.");
     bootLog(`URL:\n${telegramApiRoot()}`);
     bootLog(`error: ${probe.error || "timeout"}`);
     bootLog("Possible solutions:\n1. VPN\n2. TELEGRAM_PROXY\n3. TELEGRAM_API_ROOT");
     telegramRuntime.lastError = probe.error || "unreachable";
     releaseTelegramLock();
+    scheduleTelegramReconnect();
     return null;
   }
   telegramRuntime.apiReachable = true;
@@ -147,7 +149,6 @@ export async function startTelegramBot() {
 
   bot.command("start", neverSilent("start", async (ctx) => {
     logger.info({ telegramUserId: ctx.from?.id, chatId: ctx.chat?.id, username: ctx.from?.username }, "/start received");
-    await ctx.reply("🤖 SynapseAI подключается...");
     try {
       const user = await requireUser(ctx);
       if (!user) return;
@@ -182,6 +183,8 @@ export async function startTelegramBot() {
   bot.command("keys", act("keys"));
   bot.command("testorder", act("testorder"));
   bot.command("testclose", act("testclose"));
+  bot.command("testnet", act("testnet"));
+  bot.command("system", act("system"));
   bot.command("unlock", act("unlock"));
   bot.command("diagnostic", act("status_tech"));
   bot.command("performance", act("stats"));
@@ -294,6 +297,10 @@ export async function startTelegramBot() {
 
   telegramRuntime.polling = true;
   telegramRuntime.username = me.username;
+  if (telegramReconnectTimer) {
+    clearInterval(telegramReconnectTimer);
+    telegramReconnectTimer = null;
+  }
   bootLog("[TELEGRAM] Polling started");
   bootLog(`[TELEGRAM] Bot username: @${me.username}`);
   bootLog(`[TELEGRAM] Telegram polling @${me.username}`);
@@ -338,7 +345,24 @@ async function pollUpdates(bot: Bot) {
   }
 }
 
+export function scheduleTelegramReconnect() {
+  if (telegramReconnectTimer || telegramRuntime.polling) return;
+  telegramReconnectTimer = setInterval(() => {
+    if (telegramRuntime.polling) {
+      clearInterval(telegramReconnectTimer!);
+      telegramReconnectTimer = null;
+      return;
+    }
+    bootLog("[TELEGRAM] retrying API...");
+    void startTelegramBot();
+  }, 30_000);
+}
+
 export async function stopTelegramBot() {
+  if (telegramReconnectTimer) {
+    clearInterval(telegramReconnectTimer);
+    telegramReconnectTimer = null;
+  }
   telegramRuntime.polling = false;
   try {
     await runningBot?.stop();

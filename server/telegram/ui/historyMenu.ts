@@ -1,11 +1,20 @@
 import { InlineKeyboard } from "grammy";
 import type { LocaleCode } from "../locales/index.js";
-import { closeReasonLabel, coin, fundingLabel, money, price, whenLabel } from "./format.js";
+import { closeReasonLabel, coin, fundingLabel, money, price } from "./format.js";
 import { navRow } from "./keyboards.js";
 
 export function historyList(
   lang: LocaleCode,
-  rows: { id: string; symbol: string; pnl: number; closedAt: Date | null; badge?: string }[],
+  rows: {
+    id: string;
+    symbol: string;
+    pnl: number;
+    closedAt: Date | null;
+    badge?: string;
+    entry?: number | null;
+    exit?: number | null;
+    reason?: string | null;
+  }[],
   period: "today" | "7d" | "30d" | "all"
 ) {
   const title = lang === "en" ? "📈 <b>Recent trades</b>\n" : "📈 <b>Последние сделки</b>\n";
@@ -19,7 +28,12 @@ export function historyList(
         const icon = r.pnl >= 0 ? "🟢" : "🔴";
         const label = r.pnl >= 0 ? (lang === "en" ? "Profit" : "Прибыль") : lang === "en" ? "Loss" : "Убыток";
         const badge = r.badge ? `\n${r.badge}` : "";
-        return `\n${icon} ${coin(r.symbol)}${badge}\n${label}: ${money(r.pnl)}\n${lang === "en" ? "Closed" : "Закрыта"}: ${whenLabel(r.closedAt, lang)}`;
+        const entry = r.entry != null ? `\n${lang === "en" ? "Entry" : "Вход"}:\n${price(r.entry)}` : "";
+        const exit = r.exit != null ? `\n${lang === "en" ? "Exit" : "Выход"}:\n${price(r.exit)}` : "";
+        const reason = r.reason
+          ? `\n${lang === "en" ? "Close reason" : "Причина закрытия"}:\n${closeReasonLabel(r.reason, lang)}`
+          : "";
+        return `\n${icon} ${coin(r.symbol)}${badge}\n${label}:\n${money(r.pnl)}${entry}${exit}${reason}\n────────────`;
       })
       .join("\n");
     for (let i = 0; i < Math.min(rows.length, 8); i += 2) {

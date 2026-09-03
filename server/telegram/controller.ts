@@ -54,6 +54,8 @@ import { testOrderFailedMessage, parseBinancePayload, redactSecrets, logTestOrde
 import { logger } from "../logger.js";
 import { formatDecisionTelegram, formatIdleTelegram } from "../trading/decision/decisionRecord.js";
 import { findActiveSetupPause, latestIdleDecision, parseDecisionReasons } from "../trading/decision/persist.js";
+import { testnetModeScreen } from "./ui/testnetMenu.js";
+import { systemHealthScreen } from "./ui/systemMenu.js";
 
 export type TgUser = User & { riskSettings: RiskSettings | null; credentials: ExchangeCredential | null };
 
@@ -189,7 +191,10 @@ async function showSignals(reply: Reply, user: TgUser) {
       const hit = results.filter((r) => "signal" in r && r.signal).sort((a, b) => ((b as { signal?: { confidence?: number } }).signal?.confidence || 0) - ((a as { signal?: { confidence?: number } }).signal?.confidence || 0))[0];
       if (hit && "signal" in hit && hit.signal) pendingSignals.set(user.id, hit.signal);
     } catch (err) {
-      await reply(friendlyError(err instanceof Error ? err.message : String(err), lang), { parse_mode: "HTML" });
+      logger.warn({ err }, "signal scan failed");
+      const kb = new InlineKeyboard().text(lang === "en" ? "📡 History" : "📡 История", "sighist");
+      navRow(kb.row(), lang);
+      await reply(noTradeText(lang), { parse_mode: "HTML", reply_markup: kb });
       return;
     }
     row = await prisma.signal.findFirst({
@@ -411,10 +416,14 @@ async function originsForHistory(user: TgUser, rows: { positionId: string | null
   );
 }
 
-async function showHistory(reply: Reply, user: TgUser, period: string) {
+async function showHistory(reply: Reply, user: TgUser, period: string, opts?: { testnetOnly?: boolean }) {
   const since = periodSince(period);
   const rows = await prisma.orderHistory.findMany({
-    where: { userId: user.id, closedAt: { gte: since } },
+    where: {
+      userId: user.id,
+      closedAt: { gte: since },
+      ...(opts?.testnetOnly ? { isPaperTrade: false } : {}),
+    },
     orderBy: { closedAt: "desc" },
     take: 15,
   });
@@ -428,6 +437,9 @@ async function showHistory(reply: Reply, user: TgUser, period: string) {
       pnl: r.pnl,
       closedAt: r.closedAt,
       badge: originBadge(origins[i], lang),
+      entry: r.entryPrice,
+      exit: r.exitPrice,
+      reason: r.exitReason,
     })),
     period === "7d" || period === "30d" || period === "today" ? period : "all"
   );
@@ -648,6 +660,38 @@ export async function handleAction(
     if (action === "paper") {
       const report = await loadPaperSoak(user.id);
       const screen = paperSoakScreen(lang, report);
+      await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
+      return;
+    }
+    if (action === "testnet") {
+      const creds = await getDecryptedCredentials(user.id).catch(() => null);
+      const snap = await systemSnapshot().catch(() => null);
+      const screen = testnetModeScreen({
+        lang,
+        connected: Boolean(creds) && Boolean(snap?.binanceAuthenticated || snap?.binanceRest),
+        mode: user.tradingMode === "LIVE" ? "TESTNET" : user.tradingMode,
+        autoOn: Boolean(user.autoTradeEnabled && autoTradeCertified()),
+        liveBlocked: process.env.ALLOW_LIVE !== "true",
+      });
+      await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
+      return;
+    }
+    if (action === "testhist") {
+      await showHistory(reply, user, "all", { testnetOnly: true });
+      return;
+    }
+    if (action === "system") {
+      const snap = await systemSnapshot().catch(() => null);
+      const screen = systemHealthScreen(lang, {
+        postgres: Boolean(snap?.postgres),
+        telegram: Boolean(snap?.telegramPolling || telegramRuntime.polling),
+        binanceRest: Boolean(snap?.binanceRest),
+        marketDataHealthy: Boolean(snap?.marketDataHealthy),
+        marketDataState: snap?.marketDataState,
+        workers: Boolean(snap?.workers),
+        binanceWs: Boolean(snap?.binanceWs),
+        testnet: Boolean(snap?.binanceRest || snap?.binanceAuthenticated),
+      });
       await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
       return;
     }
@@ -906,6 +950,10 @@ export async function handleAction(
       for (const row of open) {
         await tradingOrchestrator.closePosition(user.id, row.id, "MANUAL");
       }
+      await reply(
+        lang === "en" ? "TESTNET position(s) are being closed." : "Позиция TESTNET закрывается.",
+        { parse_mode: "HTML" }
+      );
       return;
     }
     if (action === "open_paper") {
