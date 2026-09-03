@@ -4,14 +4,14 @@ import { getLocale, type LocaleCode } from "../locales/index.js";
 export function replyMainKeyboard(lang: LocaleCode) {
   const r = getLocale(lang).reply;
   return new Keyboard()
-    .text(r.start)
-    .text(r.stop)
-    .row()
     .text(r.market)
-    .text(r.positions)
+    .text(r.signals)
     .row()
-    .text(r.history)
-    .text(r.results)
+    .text(r.auto)
+    .text(r.trades)
+    .row()
+    .text(r.stats)
+    .text(r.risk)
     .row()
     .text(r.settings)
     .text(r.help)
@@ -27,25 +27,24 @@ export function navRow(kb: InlineKeyboard, lang: LocaleCode, back?: string) {
 }
 
 export function homeInline(autoOn: boolean, lang: LocaleCode) {
-  const kb = new InlineKeyboard();
-  if (autoOn) kb.text(lang === "en" ? "⏹ Stop bot" : "⏹ Остановить бота", "stop_bot");
-  else kb.text(lang === "en" ? "▶️ Start bot" : "▶️ Запустить бота", "start_bot");
-  kb.row()
+  const kb = new InlineKeyboard()
     .text(lang === "en" ? "📊 Market" : "📊 Рынок", "market")
-    .text(lang === "en" ? "💼 Positions" : "💼 Позиции", "positions")
+    .text(lang === "en" ? "📡 Signals" : "📡 Сигналы", "signals")
     .row()
-    .text(lang === "en" ? "📜 History" : "📜 История", "history")
-    .text(lang === "en" ? "💰 Results" : "💰 Результаты", "results")
+    .text(lang === "en" ? "🤖 Auto trading" : "🤖 Автоторговля", "auto_menu")
+    .text(lang === "en" ? "📈 Trades" : "📈 Сделки", "history")
     .row()
-    .text(lang === "en" ? "🔎 Signals" : "🔎 Сигналы", "signals")
+    .text(lang === "en" ? "💰 Statistics" : "💰 Статистика", "stats")
     .text(lang === "en" ? "🛡 Risks" : "🛡 Риски", "risk")
     .row()
-    .text(lang === "en" ? "📋 PAPER check" : "📋 PAPER-проверка", "paper")
     .text(lang === "en" ? "⚙️ Settings" : "⚙️ Настройки", "settings")
+    .text(lang === "en" ? "ℹ️ Help" : "ℹ️ Помощь", "help")
     .row()
-    .text(lang === "en" ? "❓ Help" : "❓ Помощь", "help")
+    .text(lang === "en" ? "💼 Positions" : "💼 Позиции", "positions")
+    .text(lang === "en" ? "📉 Why no trades?" : "📉 Почему не торгует?", "whyidle")
     .row()
     .text(lang === "en" ? "🚨 STOP" : "🚨 STOP", "panic");
+  if (autoOn) kb.row().text(lang === "en" ? "⏹ Stop auto" : "⏹ Выключить авто", "stop_bot");
   return kb;
 }
 
@@ -53,14 +52,27 @@ export function matchReply(text: string, lang: LocaleCode) {
   const r = getLocale(lang).reply;
   const ru = getLocale("ru").reply;
   const en = getLocale("en").reply;
-  const table: Record<string, string> = {};
+  const table: Record<string, string> = {
+    "▶️ Старт": "auto_menu",
+    "▶️ Start": "auto_menu",
+    "⏹ Стоп": "stop_bot",
+    "⏹ Stop": "stop_bot",
+    "💼 Позиции": "positions",
+    "💼 Positions": "positions",
+    "📜 История": "history",
+    "📜 History": "history",
+    "💰 Результаты": "stats",
+    "💰 Results": "stats",
+    "❓ Помощь": "help",
+    "❓ Help": "help",
+  };
   for (const loc of [r, ru, en]) {
-    table[loc.start] = "start_bot";
-    table[loc.stop] = "stop_bot";
     table[loc.market] = "market";
-    table[loc.positions] = "positions";
-    table[loc.history] = "history";
-    table[loc.results] = "results";
+    table[loc.signals] = "signals";
+    table[loc.auto] = "auto_menu";
+    table[loc.trades] = "history";
+    table[loc.stats] = "stats";
+    table[loc.risk] = "risk";
     table[loc.settings] = "settings";
     table[loc.help] = "help";
   }

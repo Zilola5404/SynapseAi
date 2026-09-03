@@ -45,6 +45,7 @@ export function closeReasonLabel(reason: string, locale: "ru" | "en") {
     TAKE_PROFIT: "Достигнута цель Take Profit",
     MANUAL: "Закрыта пользователем",
     KILL_SWITCH: "Kill Switch",
+    RISK_PROTECTION: "🛡 Risk Protection",
     PROTECTION_FAILURE: "Сделка закрыта системой защиты",
     MAX_DRAWDOWN: "Достигнут лимит просадки",
     RETRY: "Повторное закрытие",
@@ -57,6 +58,7 @@ export function closeReasonLabel(reason: string, locale: "ru" | "en") {
     TAKE_PROFIT: "Take Profit target was reached",
     MANUAL: "Closed by user",
     KILL_SWITCH: "Kill Switch",
+    RISK_PROTECTION: "🛡 Risk Protection",
     PROTECTION_FAILURE: "Closed by the protection system",
     MAX_DRAWDOWN: "Drawdown limit reached",
     RETRY: "Close retry",
@@ -102,6 +104,26 @@ export function friendlyError(raw: string, locale: "ru" | "en") {
     return locale === "en"
       ? "There is already an open trade on this coin."
       : "По этой монете уже есть открытая сделка.";
+  }
+  if (/TP_TOO_CLOSE_TO_COVER_COSTS/i.test(s)) {
+    return locale === "en"
+      ? "⛔ Trade not opened\n\nTake Profit is too close to cover trading costs."
+      : "⛔ Сделка не открыта\n\nTake Profit слишком близко и не покрывает торговые расходы.";
+  }
+  if (/INSUFFICIENT_NET_EDGE|TRADING_COST_TOO_HIGH/i.test(s)) {
+    return locale === "en"
+      ? "⛔ Trade not opened\n\nPotential profit does not cover trading costs."
+      : "⛔ Сделка не открыта\n\nПотенциальная прибыль не покрывает расходы.";
+  }
+  if (/insufficient| -2019|Margin is insufficient/i.test(s)) {
+    return locale === "en"
+      ? "❌ Test order was not filled\n\nReason:\nNot enough TESTNET funds"
+      : "❌ Тестовый ордер не выполнен\n\nПричина:\nНедостаточно средств на TESTNET";
+  }
+  if (/-4164|-1111|notional must|LOT_SIZE/i.test(s)) {
+    return locale === "en"
+      ? "❌ Test order was not filled\n\nReason:\nOrder size is below the exchange minimum"
+      : "❌ Тестовый ордер не выполнен\n\nПричина:\nРазмер ордера меньше минимально допустимого";
   }
   if (/DEGRADED/i.test(s)) {
     return locale === "en"

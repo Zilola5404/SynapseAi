@@ -34,7 +34,7 @@ export async function accountEquity(userId: string): Promise<number> {
       return bal.totalEquityUsdt;
     }
   } catch (err) {
-    logger.warn({ err, userId }, "Баланс Binance недоступен, используется paper-баланс");
+    logger.warn({ err, userId }, "[BINANCE] balance unavailable, using paper balance");
   }
   return user.paperBalanceUsdt;
 }
@@ -136,7 +136,7 @@ export async function placeGuardedOrder(params: {
       slOrderId = prot.slOrderId;
       tpOrderId = prot.tpOrderId;
     } catch (err) {
-      logger.warn({ err }, "Не удалось выставить SL/TP на бирже, серверный монитор продолжит защиту");
+      logger.warn({ err }, "[PROTECTION] exchange SL/TP failed, server monitor keeps watching");
     }
   }
 
@@ -221,7 +221,7 @@ export async function closePosition(params: {
         });
       }
     } catch (err) {
-      logger.warn({ err, positionId: pos.id }, "Ошибка закрытия на Binance, позиция всё равно закрывается в БД");
+      logger.warn({ err, positionId: pos.id }, "[POSITION] Binance close failed, closing in database");
     }
   }
 
@@ -298,7 +298,7 @@ export async function triggerKillSwitch(userId: string) {
       }
     }
   } catch (err) {
-    logger.warn({ err, userId }, "Kill switch: не все биржевые ордера отменены");
+    logger.warn({ err, userId }, "[KILL_SWITCH] not all exchange orders cancelled");
   }
 
   await writeSystemLog({

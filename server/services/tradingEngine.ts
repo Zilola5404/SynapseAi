@@ -93,6 +93,7 @@ export function startTradingEngine() {
   if (process.env.MARKET_DATA_USE_TESTNET === "true") {
     marketDataProvider.setMode("TESTNET");
   }
+  bootLog("[BINANCE] public Futures market data");
   bootLog(`[MARKET] Futures REST ${futuresMarketDataUrl()} (not Spot api.binance.com)`);
   posTimer = setInterval(() => {
     lastPosAt = Date.now();

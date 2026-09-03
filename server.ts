@@ -20,7 +20,9 @@ import { credentialsRouter } from "./server/routes/credentials.js";
 import { tradingRouter } from "./server/routes/trading.js";
 import { bootLog } from "./server/bootLog.js";
 import { startTelegramBot, stopTelegramBot } from "./server/telegram/bot.js";
-import { startTradingEngine, stopTradingEngine } from "./server/services/tradingEngine.js";
+import { startTradingEngine, stopTradingEngine, isEngineReady } from "./server/services/tradingEngine.js";
+import { printReadyBanner } from "./server/readyBanner.js";
+import { telegramRuntime } from "./server/telegram/runtime.js";
 import { runHistoricalBacktest } from "./server/trading/backtest/BacktestEngine.js";
 import { healthRouter } from "./server/routes/health.js";
 
@@ -898,32 +900,58 @@ async function startServer() {
     });
   }
 
-  const httpServer = app.listen(PORT, "0.0.0.0", () => {
-    bootLog(`[HTTP] server started http://0.0.0.0:${PORT}`);
-  });
-  httpServer.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      bootLog("[HTTP:FATAL] Port 3000 already in use. Stop the other npm run dev.");
-      process.exit(1);
-    }
-    throw err;
+  await new Promise<void>((resolve, reject) => {
+    const httpServer = app.listen(PORT, "0.0.0.0", () => {
+      bootLog(`[HTTP] server started http://0.0.0.0:${PORT}`);
+      resolve();
+    });
+    httpServer.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        bootLog("[HTTP:FATAL] Port 3000 already in use. Stop the other npm run dev.");
+        process.exit(1);
+      }
+      reject(err);
+    });
   });
 }
 
+async function waitRecovery(ms = 20_000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (isEngineReady()) return true;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return isEngineReady();
+}
+
 async function boot() {
+  if (process.platform === "win32") {
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("chcp 65001", { stdio: "ignore" });
+    } catch {
+      /* console code page may stay OEM; technical logs are English */
+    }
+  }
   bootLog("[BOOT] SynapseAI starting");
-  bootLog("[DB] Connecting PostgreSQL...");
+  bootLog("[DB CONNECT] Connecting PostgreSQL...");
   const dbOk = await connectDb();
   if (!dbOk) {
     bootLog("[DB:FATAL] PostgreSQL unavailable. Run: npm run db:up && npm run db:migrate");
   } else {
-    bootLog("[DB] PostgreSQL connected");
+    bootLog("[DB CONNECT] OK");
     startTradingEngine();
     bootLog("[WORKERS] started");
+    bootLog("[RECOVERY] waiting...");
+    await waitRecovery();
+    bootLog(`[RECOVERY] ${isEngineReady() ? "OK" : "PENDING"}`);
   }
+  bootLog("[TELEGRAM] starting...");
+  await startTelegramBot().catch((err) => logger.error({ err }, "Telegram bot boot failed"));
+  bootLog(`[POLLING] ${telegramRuntime.polling ? "OK" : "FAIL"}`);
   bootLog("[HTTP] starting (Vite may take a few seconds in dev)...");
-  void startTelegramBot().catch((err) => logger.error({ err }, "Telegram bot boot failed"));
   await startServer();
+  await printReadyBanner({ httpOk: true, dbOk });
 }
 
 async function shutdown(signal: string) {
@@ -937,6 +965,6 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 boot().catch((err) => {
-  logger.error({ err }, "Не удалось запустить сервер");
+  logger.error({ err }, "[BOOT] server start failed");
   process.exit(1);
 });

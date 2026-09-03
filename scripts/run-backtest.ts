@@ -8,6 +8,7 @@ import path from "node:path";
 import { logger } from "../server/logger.js";
 import { SCAN_UNIVERSE } from "../server/trading/intelligence/config.js";
 import { BACKTEST } from "../server/trading/backtest/config.js";
+import { EXIT_POLICY } from "../server/trading/exitPolicy.js";
 import { computeRMetrics, evaluateSampleGate, fmtR } from "../server/trading/backtest/rMetrics.js";
 import {
   FACTOR_KEYS,
@@ -270,7 +271,7 @@ async function main() {
     `- SL / TP: stop checked before TP on each bar.`,
     `- Same-bar SL and TP: **SL** (${ambiguous} trades marked ambiguous).`,
     `- Partial TP: 30/30/40 of remaining, matching live scale-out config (not retuned).`,
-    `- Time exit: ${BACKTEST.maxHoldBars} × 5m = 24h cap. Live engine has no TIME kill-switch.`,
+    `- Time exit: canonical ${EXIT_POLICY.id} (maxHoldBars=${EXIT_POLICY.maxHoldBars}, maxHoldMs=${EXIT_POLICY.maxHoldMs}). Same rule as PAPER / TESTNET / LIVE.`,
     `- Fees: taker in and out.`,
     `- Funding cash: ${fundingSum.toFixed(4)} USDT across trades.`,
     "",

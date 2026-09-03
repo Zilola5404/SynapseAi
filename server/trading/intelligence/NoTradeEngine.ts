@@ -44,12 +44,12 @@ export function collectNoTradeReasons(params: {
   });
 }
 
-export function autoAllowed(grade: string) {
-  return grade === "A+";
+export function autoAllowed(grade: string, regime?: string) {
+  if (grade !== "A+") return false;
+  if (regime) return (INTEL.autoRegimes as readonly string[]).includes(regime);
+  return true;
 }
 
 export function tradeAllowed(grade: string) {
   return grade === "A+" || grade === "A";
 }
-
-void INTEL;

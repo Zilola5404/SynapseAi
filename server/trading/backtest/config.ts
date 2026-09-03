@@ -3,7 +3,7 @@ export const BACKTEST = {
   historyMonths: 18,
   lookback: 500,
   step: 6,
-  /** Live has no TIME kill. Canonical after exit-sensitivity: NO_TIME_EXIT. */
+  /** Must equal EXIT_POLICY.maxHoldBars (asserted in exitPolicy.test.ts). */
   maxHoldBars: 1_000_000,
   trainDays: 182,
   valDays: 61,

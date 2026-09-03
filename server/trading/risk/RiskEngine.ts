@@ -1,6 +1,7 @@
 import type { RiskSettings, User } from "@prisma/client";
 import type { RiskDecision, StrategySignal } from "../types.js";
 import { planPositionSize, type PositionSizeMode, type SizeBreakdown } from "./PositionSizer.js";
+import { estimateTradeCosts, isCertificationSignal, TRADING_COST_TOO_HIGH } from "./tradeCostGate.js";
 
 export type { SizeBreakdown };
 
@@ -21,6 +22,7 @@ export function evaluateRisk(params: {
   source?: "auto" | "manual";
   circuitOpen?: boolean;
   circuitReason?: string;
+  skipCostGate?: boolean;
 }): RiskDecision {
   const { user, risk, signal, equity, openCount, openExposureUsdt, realizedPnl24h, source = "auto" } = params;
 
@@ -45,7 +47,7 @@ export function evaluateRisk(params: {
 
   const maxDailyLoss = equity * (risk.maxDailyLossPct / 100);
   if (realizedPnl24h < 0 && Math.abs(realizedPnl24h) >= maxDailyLoss) {
-    return deny(`Дневной лимит убытка достигнут (${risk.maxDailyLossPct}%).`);
+    return deny(`Дневной лимит убытка достигнут (${risk.maxDailyLossPct}%).`, "DAILY_LOSS_LIMIT");
   }
 
   const peak = peakForTradingVenue({
@@ -75,13 +77,30 @@ export function evaluateRisk(params: {
   });
 
   if (sized.quantity <= 0 || sized.marginUsdt < 5) {
-    return deny("Размер позиции слишком мал.");
+    return deny("Размер позиции слишком мал.", "SIZE_INVALID");
   }
 
   const exposurePct = ((openExposureUsdt + sized.sizeUsdt) / equity) * 100;
   const maxExposure = risk.maxExposurePct || 30;
   if (exposurePct > maxExposure) {
     return deny(`Превышена экспозиция ${exposurePct.toFixed(1)}% / ${maxExposure}%`);
+  }
+
+  const skipCost = params.skipCostGate || isCertificationSignal(signal);
+  const cost = estimateTradeCosts({
+    entry: signal.entryPrice,
+    stopLoss: signal.stopLoss,
+    takeProfit: signal.takeProfit,
+    quantity: sized.quantity,
+  });
+  if (!skipCost && !cost.pass) {
+    return {
+      ...deny(
+        `${cost.reason || TRADING_COST_TOO_HIGH}: Net RR ${cost.netRr.toFixed(2)} / costs $${cost.totalCosts.toFixed(2)}`,
+        cost.reason || TRADING_COST_TOO_HIGH
+      ),
+      cost,
+    };
   }
 
   return {
@@ -91,11 +110,12 @@ export function evaluateRisk(params: {
     marginUsdt: sized.marginUsdt,
     leverage: sized.leverage,
     explain: sized,
+    cost,
   };
 }
 
-function deny(reason: string): RiskDecision {
-  return { allowed: false, reason, quantity: 0, sizeUsdt: 0, marginUsdt: 0, leverage: 1 };
+function deny(reason: string, code?: string): RiskDecision {
+  return { allowed: false, reason, code, quantity: 0, sizeUsdt: 0, marginUsdt: 0, leverage: 1 };
 }
 
 /** PAPER default peak ($10k) must not block a smaller Futures Demo balance. */

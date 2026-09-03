@@ -208,36 +208,31 @@ export function evaluateIntelligence(input: IntelligenceInput): IntelligenceDeci
     return {
       decision: "NO_TRADE",
       plan: null,
+      shadowPlan: plan,
       confluence,
       vetoes: vetoes.length ? vetoes : extra,
       context,
       regime,
       setup,
+      structureLabel: structure.structure,
     };
   }
 
   return {
     decision: "TRADE",
     plan,
+    shadowPlan: null,
     confluence,
     vetoes: [],
     context,
     regime,
     setup,
+    structureLabel: structure.structure,
   };
 }
 
 export function decisionToSignal(result: IntelligenceDecision): SignalDecision {
-  if (result.decision !== "TRADE" || !result.plan) {
-    return {
-      signal: null,
-      qualityScore: result.confluence.total,
-      vetoes: result.vetoes,
-      regime: result.regime.regime,
-    };
-  }
-  const p = result.plan;
-  const signal: StrategySignal = {
+  const toSignal = (p: NonNullable<IntelligenceDecision["plan"]>): StrategySignal => ({
     symbol: p.symbol,
     direction: p.direction,
     confidence: p.setupScore,
@@ -256,10 +251,23 @@ export function decisionToSignal(result: IntelligenceDecision): SignalDecision {
     reasoning: result.confluence.lines.map((l) => `${l.key}:${l.points}/${l.max}`).join("; "),
     strategy: p.setupType,
     scoreLines: result.confluence.lines,
-  };
+    marketRegime: result.regime.regime,
+    structure: result.structureLabel || "",
+  });
+  if (result.decision !== "TRADE" || !result.plan) {
+    return {
+      signal: null,
+      shadowSignal: result.shadowPlan ? toSignal(result.shadowPlan) : null,
+      qualityScore: result.confluence.total,
+      vetoes: result.vetoes,
+      regime: result.regime.regime,
+    };
+  }
+  const signal = toSignal(result.plan);
   return {
     signal,
-    qualityScore: p.setupScore,
+    shadowSignal: null,
+    qualityScore: result.plan.setupScore,
     vetoes: [],
     regime: result.regime.regime,
   };

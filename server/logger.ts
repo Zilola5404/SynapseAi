@@ -1,6 +1,13 @@
 import pino from "pino";
 import pretty from "pino-pretty";
 
+try {
+  process.stdout.setDefaultEncoding("utf8");
+  process.stderr.setDefaultEncoding("utf8");
+} catch {
+  /* encoding already set */
+}
+
 const isDev = process.env.NODE_ENV !== "production";
 const level = process.env.LOG_LEVEL || "info";
 

@@ -1,6 +1,9 @@
 export type BinanceErrorKind =
   | "TIMESTAMP"
   | "INSUFFICIENT_MARGIN"
+  | "MIN_NOTIONAL"
+  | "LOT_SIZE"
+  | "PRICE_FILTER"
   | "RATE_LIMIT"
   | "INVALID_KEY"
   | "UNKNOWN";
@@ -23,7 +26,10 @@ export function classifyBinanceError(status: number, body: string): { kind: Bina
 
 function kindFromCode(code: number | null, status: number): BinanceErrorKind {
   if (code === -1021 || /timestamp/i.test(String(code))) return "TIMESTAMP";
-  if (code === -2010 || code === -2019 || code === -4164) return "INSUFFICIENT_MARGIN";
+  if (code === -4164) return "MIN_NOTIONAL";
+  if (code === -1013) return "LOT_SIZE";
+  if (code === -1111) return "PRICE_FILTER";
+  if (code === -2010 || code === -2019) return "INSUFFICIENT_MARGIN";
   if (code === -1003 || status === 429) return "RATE_LIMIT";
   if (code === -2015 || code === -2014 || status === 401) return "INVALID_KEY";
   return "UNKNOWN";
@@ -35,6 +41,12 @@ export function formatBinanceError(kind: BinanceErrorKind, message: string): str
       return `Рассинхрон часов с Binance (-1021). SynapseAI синхронизирует время автоматически — повторите /keys.`;
     case "INSUFFICIENT_MARGIN":
       return `Недостаточно маржи: ${message}`;
+    case "MIN_NOTIONAL":
+      return `Размер ордера меньше минимально допустимого: ${message}`;
+    case "LOT_SIZE":
+      return `Количество не проходит LOT_SIZE: ${message}`;
+    case "PRICE_FILTER":
+      return `Цена не проходит PRICE_FILTER: ${message}`;
     case "RATE_LIMIT":
       return `Превышен лимит запросов Binance: ${message}`;
     case "INVALID_KEY":

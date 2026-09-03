@@ -4,6 +4,7 @@ import { computeTradePnl } from "../pnl.js";
 import type { BinanceCandle } from "../../binance.js";
 import type { StrategySignal } from "../types.js";
 import { BACKTEST } from "./config.js";
+import { EXIT_POLICY } from "../exitPolicy.js";
 
 export type FundingPoint = { time: number; rate: number };
 export type ExitReason = "SL" | "TP1" | "TP2" | "TP3" | "TIME" | "EOD";
@@ -67,7 +68,7 @@ export function simulateFill(
   signalIndex: number,
   signal: StrategySignal,
   rates: FundingPoint[] = [],
-  maxHoldBars: number = BACKTEST.maxHoldBars
+  maxHoldBars: number = EXIT_POLICY.maxHoldBars
 ): FillResult | null {
   const entryIndex = signalIndex + 1;
   const fillBar = m5[entryIndex];

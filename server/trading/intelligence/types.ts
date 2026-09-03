@@ -121,9 +121,12 @@ export type TradePlan = {
 export type IntelligenceDecision = {
   decision: "TRADE" | "NO_TRADE";
   plan: TradePlan | null;
+  /** Plan that would have traded if a later gate had not blocked (shadow / stats). */
+  shadowPlan?: TradePlan | null;
   confluence: ConfluenceResult;
   vetoes: Reason[];
   context: MarketContext;
   regime: RegimeResult;
   setup: SetupCandidate | null;
+  structureLabel?: string;
 };

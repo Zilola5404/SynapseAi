@@ -30,6 +30,17 @@ import { computeTradePnl, canRunFinalize } from "../pnl.js";
 import { SIGNAL_TTL_MS, buildSignalFactors, potentialMoveUsdt, isSignalExpired, priceMovedTooFar, encodeConfluencePayload, parseSignalFactors } from "../signalExplain.js";
 import { autoAllowed } from "../intelligence/NoTradeEngine.js";
 import { INTEL } from "../intelligence/config.js";
+import { estimateTradeCosts } from "../risk/tradeCostGate.js";
+import { nextUtcMidnight } from "../risk/lossCluster.js";
+import { autoGateChecks, regimeAllowedForAuto } from "../decision/tradeQuality.js";
+import { buildDecisionRecord, newDecisionId } from "../decision/decisionRecord.js";
+import {
+  applyLossClusterAfterClose,
+  encodeDecisionReasons,
+  findActiveSetupPause,
+  persistShadowSignal,
+} from "../decision/persist.js";
+import { InlineKeyboard } from "grammy";
 import { TP_SCALE_OUT } from "../tpPolicy.js";
 import { KILL_SWITCH_POLICY } from "../killSwitchPolicy.js";
 import { EXIT_POLICY } from "../exitPolicy.js";
@@ -53,7 +64,16 @@ export function parseIntelPlan(raw: string | null | undefined) {
   const i = raw.indexOf("__PLAN__");
   if (i < 0) return null;
   try {
-    return JSON.parse(raw.slice(i + 8)) as { tp1?: number; tp2?: number; tp3?: number | null; hits?: number };
+    return JSON.parse(raw.slice(i + 8)) as {
+      tp1?: number;
+      tp2?: number;
+      tp3?: number | null;
+      hits?: number;
+      grade?: string;
+      type?: string;
+      source?: string;
+      environment?: string;
+    };
   } catch {
     return null;
   }
@@ -259,6 +279,13 @@ export class TradingOrchestrator {
       });
       const signal = decision.signal;
       if (!signal) {
+        if (decision.shadowSignal) {
+          await persistShadowSignal({
+            userId,
+            signal: decision.shadowSignal,
+            reasons: (decision.vetoes || []).map((v) => v.textRu),
+          });
+        }
         results.push({
           symbol: row.symbol,
           action: "HOLD" as const,
@@ -306,8 +333,13 @@ export class TradingOrchestrator {
         throw new Error("MARKET DATA DEGRADED — no new trades");
       }
 
-      if (source === "auto" && !autoAllowed(signal.setupGrade || "NO_TRADE")) {
-        throw new Error("AUTO mode opens A+ setups only");
+      if (source === "auto" && !autoAllowed(signal.setupGrade || "NO_TRADE", signal.marketRegime)) {
+        throw new Error("AUTO mode opens A+ TRENDING setups only");
+      }
+
+      const pausedSetup = await findActiveSetupPause(userId, signal.symbol, signal.direction);
+      if (pausedSetup) {
+        throw new Error(`${signal.symbol} ${signal.direction} SETUPS PAUSED until ${pausedSetup.until.toISOString()}`);
       }
 
       const live = binanceWsManager.getPrice(signal.symbol);
@@ -320,7 +352,7 @@ export class TradingOrchestrator {
         where: { userId, symbol: signal.symbol, status: livePositionStatus },
       });
       if (dup) {
-        logger.info({ symbol: signal.symbol }, "[AUTO] Existing position: YES");
+        logger.info({ symbol: signal.symbol }, `[POSITION] ${signal.symbol} already exists`);
         throw new Error(`${signal.symbol} already has an OPEN position`);
       }
 
@@ -362,19 +394,25 @@ export class TradingOrchestrator {
         source,
         circuitOpen: circuit.open,
         circuitReason: circuit.reason,
+        skipCostGate: Boolean(opts?.skipAi && signal.strategy === "TEST_ORDER"),
       });
       if (!risk.allowed) {
-        logger.info({ symbol: signal.symbol, reason: risk.reason }, "[RISK] REJECTED");
+        logger.info({ symbol: signal.symbol, reason: risk.reason, code: risk.code }, "[RISK] REJECTED");
         await transitionOrder(tracked.id, "REJECTED", { lastError: risk.reason });
         await writeSystemLog({ userId, level: "RISK_WARN", pair: signal.symbol, action: "RISK_REJECT", details: risk.reason || "" });
-        if (risk.reason?.includes("Дневной лимит") || /daily/i.test(risk.reason || "")) {
+        if (risk.code === "DAILY_LOSS_LIMIT" || risk.reason?.includes("Дневной лимит") || /daily/i.test(risk.reason || "")) {
+          const until = nextUtcMidnight();
+          await prisma.user.update({
+            where: { id: userId },
+            data: { autoTradeEnabled: false, scannerEnabled: false, pauseUntil: until },
+          });
           const lang = await userLang(userId);
           await notifyEvent(
             userId,
             "risk",
             lang === "en"
-              ? "⚠️ The daily loss limit has been reached.\n\nNew trades are paused until tomorrow."
-              : "⚠️ Достигнут дневной лимит убытка.\n\nНовые сделки сегодня не открываются."
+              ? `🔒 AUTO TRADING PAUSED\n\nDaily loss limit reached.\nPaused until the next UTC trading day (${until.toISOString().slice(0, 10)}).`
+              : `🔒 AUTO TRADING PAUSED\n\nДостигнут дневной лимит убытка.\nПауза до следующего торгового дня UTC (${until.toISOString().slice(0, 10)}).`
           );
         }
         throw new Error(risk.reason);
@@ -468,6 +506,8 @@ export class TradingOrchestrator {
             hits: 0,
             grade: signal.setupGrade || "",
             type: signal.setupType || signal.strategy,
+            source: signal.strategy === "TEST_ORDER" || signal.setupType === "TEST_ORDER" ? "TEST_ORDER" : source === "auto" ? "AUTO" : "MANUAL",
+            environment: fill.isPaper ? "PAPER" : user.tradingMode === "LIVE" ? "LIVE" : "TESTNET",
           })}`,
           aiConfidence: signal.confidence,
           status: "OPEN",
@@ -686,6 +726,44 @@ export class TradingOrchestrator {
         details: `${signal.direction} ${signal.symbol} @ ${fill.fillPrice} qty=${fill.quantity} fees=${fill.feesUsdt} SL ${signal.stopLoss} TP ${signal.takeProfit} grade=${signal.setupGrade || ""} ${signal.confluenceScore ?? signal.confidence}/15`,
         confidence: signal.confidence,
       });
+      const decisionId = newDecisionId();
+      const cost =
+        risk.cost ||
+        estimateTradeCosts({
+          entry: fill.fillPrice,
+          stopLoss: signal.stopLoss,
+          takeProfit: signal.takeProfit,
+          quantity: fill.quantity,
+        });
+      const gates = autoGateChecks({
+        regimeAllowed: source !== "auto" || regimeAllowedForAuto(signal.marketRegime),
+        htfOk: true,
+        structureOk: true,
+        triggerOk: true,
+        riskOk: true,
+        costOk: Boolean(cost.pass),
+        sizeOk: fill.quantity > 0,
+        noDuplicate: true,
+        noKillSwitch: !user.accountLocked,
+        dataFresh: marketDataProvider.canOpenNewTrades() || source !== "auto",
+        noSetupPause: true,
+      });
+      const rec = buildDecisionRecord({
+        decisionId,
+        symbol: signal.symbol,
+        direction: signal.direction,
+        regime: signal.marketRegime,
+        structure: signal.structure,
+        setupType: signal.setupType,
+        grade: signal.setupGrade,
+        confidence: signal.confluenceScore ?? signal.confidence,
+        cost,
+        allowed: true,
+        autoGatesPass: source === "auto" && gates.pass,
+        hasSignal: true,
+        qualityScore: signal.qualityScore,
+        checks: gates.checks,
+      });
       const analysis = {
         userId,
         positionId: pos.id,
@@ -694,12 +772,12 @@ export class TradingOrchestrator {
         direction: signal.direction,
         marketMode: "",
         btcTrend: "",
-        marketRegime: "",
+        marketRegime: signal.marketRegime || "",
         setupType: signal.setupType || signal.strategy,
-        structure: "",
+        structure: signal.structure || "",
         confluenceScore: signal.confluenceScore ?? signal.confidence,
         grade: signal.setupGrade || "",
-        reasons: JSON.stringify(signal.scoreLines || []),
+        reasons: encodeDecisionReasons(signal.scoreLines || [], rec),
         entry: fill.fillPrice,
         stopLoss: signal.stopLoss,
         takeProfit: signal.takeProfit,
@@ -711,6 +789,10 @@ export class TradingOrchestrator {
         writeSystemLog({ userId, level: "TRADE", pair: signal.symbol, action: "TRADE_ANALYSIS", details: JSON.stringify(analysis) })
       );
       const lang = await userLang(userId);
+      const whyKb = new InlineKeyboard().text(
+        lang === "en" ? "📊 Why was this trade opened?" : "📊 Почему открыта сделка?",
+        `whyopen:${pos.id}`
+      );
       await notifyEvent(
         userId,
         "trade_open",
@@ -726,7 +808,8 @@ export class TradingOrchestrator {
           leverage: risk.leverage,
           quantity: fill.quantity,
           maxRiskUsdt: risk.explain?.maxLossUsdt,
-        })
+        }),
+        { replyMarkup: inlineMarkup(whyKb) }
       );
       if (storedSignalId) {
         await prisma.signal.update({ where: { id: storedSignalId }, data: { status: "TRADE_OPENED" } }).catch(() => undefined);
@@ -1007,8 +1090,31 @@ export class TradingOrchestrator {
           pos.userId,
           "risk",
           pauseLang === "en"
-            ? `⚠️ ${lossLimit} losses in a row. Auto trading is paused for 1 hour.`
-            : `⚠️ ${lossLimit} убытка подряд. Автоторговля на паузе 1 час.`
+            ? `🔒 AUTO TRADING PAUSED\n\n${lossLimit} losses in a row.\nPaused for 1 hour for market re-evaluation.`
+            : `🔒 AUTO TRADING PAUSED\n\n${lossLimit} убытка подряд.\nПауза 1 час — рынок будет оценён заново.`
+        );
+      }
+    }
+
+    if (pnl < 0) {
+      const analysis = await prisma.tradeAnalysis.findFirst({
+        where: { positionId: pos.id },
+        select: { marketRegime: true },
+      });
+      const cluster = await applyLossClusterAfterClose({
+        userId: pos.userId,
+        symbol: pos.symbol,
+        side: pos.side,
+        regime: analysis?.marketRegime || "",
+      });
+      if (cluster) {
+        const clLang = await userLang(pos.userId);
+        await notifyEvent(
+          pos.userId,
+          "risk",
+          clLang === "en"
+            ? `🔒 ${cluster.symbol} ${cluster.side} SETUPS PAUSED\n\n${cluster.count} losses in a row on the same setup.\nPaused until ${cluster.until.toISOString().slice(0, 16)} UTC.`
+            : `🔒 ${cluster.symbol} ${cluster.side} SETUPS PAUSED\n\n${cluster.count} убытка подряд по одному сетапу.\nПауза до ${cluster.until.toISOString().slice(0, 16)} UTC.`
         );
       }
     }
@@ -1108,10 +1214,58 @@ export class TradingOrchestrator {
             btc: { d1: btcSnap.d1, h4: btcSnap.h4, h1: btcSnap.h1 },
           });
           const signal = decision.signal;
-          logger.info({ symbol, action: signal?.direction || "NONE", grade: signal?.setupGrade || "NO_TRADE" }, `[AUTO] Signal: ${signal?.direction || "NONE"}`);
-          if (!signal) continue;
-          if (!confirm && !autoAllowed(signal.setupGrade || "NO_TRADE")) {
-            logger.info({ symbol, grade: signal.setupGrade }, "[AUTO] SKIP — not A+ (auto opens A+ only)");
+          logger.info({ symbol, action: signal?.direction || "NONE", grade: signal?.setupGrade || "NO_TRADE", regime: decision.regime }, `[AUTO] Signal: ${signal?.direction || "NONE"}`);
+          if (!signal) {
+            if (decision.shadowSignal) {
+              const rec = buildDecisionRecord({
+                symbol,
+                direction: decision.shadowSignal.direction,
+                regime: decision.regime,
+                setupType: decision.shadowSignal.setupType,
+                grade: decision.shadowSignal.setupGrade,
+                confidence: decision.shadowSignal.confidence,
+                allowed: false,
+                blockedReason: (decision.vetoes[0]?.textRu || "NO_TRADE"),
+                autoGatesPass: false,
+                hasSignal: false,
+                qualityScore: decision.qualityScore,
+                vetoes: decision.vetoes.map((v) => v.textRu),
+              });
+              await persistShadowSignal({
+                userId: user.id,
+                signal: decision.shadowSignal,
+                reasons: rec.vetoes,
+                decision: rec,
+              });
+            }
+            continue;
+          }
+          const setupHold = await findActiveSetupPause(user.id, signal.symbol, signal.direction);
+          if (setupHold) {
+            logger.info({ symbol, until: setupHold.until }, "[AUTO] SKIP — setup cluster pause");
+            await persistShadowSignal({
+              userId: user.id,
+              signal,
+              reasons: [`${symbol} ${signal.direction} SETUPS PAUSED`],
+            });
+            continue;
+          }
+          if (!confirm && !autoAllowed(signal.setupGrade || "NO_TRADE", signal.marketRegime || decision.regime)) {
+            logger.info({ symbol, grade: signal.setupGrade, regime: signal.marketRegime || decision.regime }, "[AUTO] SKIP — not A+ TRENDING");
+            const rec = buildDecisionRecord({
+              symbol,
+              direction: signal.direction,
+              regime: signal.marketRegime || decision.regime,
+              setupType: signal.setupType,
+              grade: signal.setupGrade,
+              confidence: signal.confidence,
+              allowed: false,
+              blockedReason: "AUTO requires A+ in TRENDING",
+              autoGatesPass: false,
+              hasSignal: true,
+              vetoes: ["AUTO открывает только A+ в режиме TRENDING"],
+            });
+            await persistShadowSignal({ userId: user.id, signal, reasons: rec.vetoes, decision: rec });
             continue;
           }
           candidates.push({ symbol, signal, h1: snap.h1, m5: snap.m5 });
@@ -1138,6 +1292,31 @@ export class TradingOrchestrator {
                 circuitReason: circuitNow.reason,
               })
             : { allowed: false, sizeUsdt: 0, marginUsdt: 0, leverage: 1, quantity: 0, explain: undefined };
+          if (!confirm && !risk.allowed) {
+            logger.info({ symbol: best.signal.symbol, reason: (risk as { reason?: string }).reason }, "[RISK] REJECTED");
+            const rec = buildDecisionRecord({
+              symbol: best.signal.symbol,
+              direction: best.signal.direction,
+              regime: best.signal.marketRegime,
+              setupType: best.signal.setupType,
+              grade: best.signal.setupGrade,
+              confidence: best.signal.confidence,
+              cost: (risk as { cost?: import("../risk/tradeCostGate.js").TradeCostEstimate }).cost,
+              allowed: false,
+              blockedReason: (risk as { code?: string }).code || (risk as { reason?: string }).reason || "RISK",
+              autoGatesPass: false,
+              hasSignal: true,
+              vetoes: [(risk as { reason?: string }).reason || "RISK"],
+            });
+            await persistShadowSignal({
+              userId: user.id,
+              signal: best.signal,
+              reasons: rec.vetoes,
+              decision: rec,
+              result: "BLOCKED",
+            });
+            continue;
+          }
           const factorList =
             (best.signal.scoreLines || []).map((l) => ({
               ok: l.ok,
@@ -1199,8 +1378,6 @@ export class TradingOrchestrator {
           });
           if (!confirm && risk.allowed) {
             await this.openFromSignal(user.id, best.signal, "auto", row.id);
-          } else if (!confirm && !risk.allowed) {
-            logger.info({ symbol: best.signal.symbol, reason: risk.allowed === false ? (risk as { reason?: string }).reason : "" }, "[RISK] REJECTED");
           }
         }
       } catch (err) {

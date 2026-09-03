@@ -58,6 +58,8 @@ export interface StrategySignal {
   reasoning: string;
   strategy: string;
   scoreLines?: ScoreLine[];
+  marketRegime?: string;
+  structure?: string;
 }
 
 import type { SizeBreakdown } from "./risk/PositionSizer.js";
@@ -65,11 +67,13 @@ import type { SizeBreakdown } from "./risk/PositionSizer.js";
 export interface RiskDecision {
   allowed: boolean;
   reason?: string;
+  code?: string;
   quantity: number;
   sizeUsdt: number;
   marginUsdt: number;
   leverage: number;
   explain?: SizeBreakdown;
+  cost?: import("./risk/tradeCostGate.js").TradeCostEstimate;
 }
 
 export interface OpenPositionInput {

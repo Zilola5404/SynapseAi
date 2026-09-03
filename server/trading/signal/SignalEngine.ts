@@ -6,6 +6,8 @@ export type Veto = { textRu: string; textEn: string };
 
 export type SignalDecision = {
   signal: StrategySignal | null;
+  /** Would-be A/A+ plan that gates blocked — stored as SHADOW, not traded. */
+  shadowSignal?: StrategySignal | null;
   qualityScore: number;
   vetoes: Veto[];
   regime: string;

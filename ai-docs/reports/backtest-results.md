@@ -1,6 +1,8 @@
 # SYNAPSEAI BACKTEST RESULTS
 
-**Run:** 2026-09-02T20:34:01.820Z
+**Run:** 2026-09-02T20:34:01.820Z  
+**Hold in this file:** **24h TIME cap** (then-current harness). Canonical policy after 2026-09-03 exit-sensitivity is **NO_TIME_EXIT** — see `reports/exit-sensitivity.md` and `reports/strategy-validation.md`. Do not treat these TIME counts as live behavior.
+
 **Universe:** BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT, ADAUSDT
 **Timeframes:** 1D, 4H, 1H, 15m, 5m (walk on 5m, step=6)
 **History:** ~549.6 days (18 months requested)

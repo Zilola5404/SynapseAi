@@ -1,7 +1,7 @@
 # REGIME PERFORMANCE
 
 **Run:** 2026-09-03T10:25:30.780Z
-Source: allowed (traded) 24h-hold fills on the frozen entry set. LOW_VOLATILITY is **not** a RegimeState in Intelligence — it is not invented here.
+Source: allowed (traded) **24h-hold** fills on the frozen entry set (same as the published 18-month walk). Canonical default is **NO_TIME_EXIT**. LOW_VOLATILITY is **not** a RegimeState in Intelligence — it is not invented here.
 
 | Regime | Trades | Win rate | Expectancy R | Median R | PF | Max DD R | Average R |
 |---|---:|---:|---:|---:|---:|---:|---:|

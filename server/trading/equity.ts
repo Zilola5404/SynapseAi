@@ -35,7 +35,7 @@ export async function equityForUser(user: User): Promise<number> {
     });
     return acc.totalEquityUsdt;
   } catch (err) {
-    logger.warn({ err, userId: user.id, mode }, "Не удалось получить equity биржи");
+    logger.warn({ err, userId: user.id, mode }, "[EQUITY] exchange equity unavailable");
     const cached = mode === "LIVE" ? user.liveEquityUsdt : user.testnetEquityUsdt;
     if (cached > 0) return cached;
     throw new Error(`Equity ${mode} недоступен, paperBalance не используется`);

@@ -9,10 +9,10 @@ export async function connectDb(): Promise<boolean> {
   try {
     await prisma.$connect();
     await prisma.$queryRaw`SELECT 1`;
-    logger.info("PostgreSQL подключена");
+    logger.info("[DB] PostgreSQL connected");
     return true;
   } catch (err) {
-    logger.error({ err }, "Не удалось подключиться к PostgreSQL");
+    logger.error({ err }, "[DB] PostgreSQL connect failed");
     return false;
   }
 }

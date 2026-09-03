@@ -102,7 +102,7 @@ EMA20/50: ${indicators?.ema20 ?? "n/a"} / ${indicators?.ema50 ?? "n/a"}
       const json = JSON.parse(text.replace(/```json|```/g, "").trim());
       const checked = parseAiSignal(json);
       if (checked.ok === false) {
-        logger.warn({ error: checked.error }, "AI JSON не прошёл валидацию, сигнал сброшен");
+        logger.warn({ error: checked.error }, "[AI] JSON failed validation, signal discarded");
       } else {
         if (checked.signal.confidence < params.user.aiConfidenceThreshold) {
           return { ...checked.signal, signal: "HOLD" };
@@ -110,7 +110,7 @@ EMA20/50: ${indicators?.ema20 ?? "n/a"} / ${indicators?.ema50 ?? "n/a"}
         return checked.signal;
       }
     } catch (err) {
-      logger.warn({ err }, "Gemini недоступен, fallback quant");
+      logger.warn({ err }, "[AI] Gemini unavailable, fallback quant");
     }
   }
 

@@ -57,6 +57,8 @@ assert.equal(gradeOf(11), "A");
 assert.equal(gradeOf(8), "B");
 assert.equal(gradeOf(5), "NO_TRADE");
 assert.equal(autoAllowed("A+"), true);
+assert.equal(autoAllowed("A+", "TRENDING"), true);
+assert.equal(autoAllowed("A+", "HIGH_VOLATILITY"), false);
 assert.equal(autoAllowed("A"), false);
 assert.equal(tradeAllowed("A"), true);
 assert.equal(tradeAllowed("B"), false);

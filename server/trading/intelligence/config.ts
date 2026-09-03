@@ -16,6 +16,11 @@ export const INTEL = {
   scaleOut: [0.3, 0.3, 0.4] as const,
   consecutiveLossLimit: 3,
   consecutiveLossPauseMs: 60 * 60 * 1000,
+  /** AUTO only in regimes with documented positive expectancy (see reports/regime-performance.md). */
+  autoRegimes: ["TRENDING"] as const,
+  /** Same count as consecutiveLossLimit — not a backtest search. */
+  lossClusterCount: 3,
+  lossClusterPauseMs: 4 * 60 * 60 * 1000,
 } as const;
 
 export const SCAN_UNIVERSE = [

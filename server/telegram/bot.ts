@@ -12,6 +12,7 @@ import { telegramRuntime } from "./runtime.js";
 import { handleAction, showHome, type TgUser } from "./controller.js";
 import { replyMainKeyboard, matchReply } from "./ui/keyboards.js";
 import { localeCode, getLocale } from "./locales/index.js";
+import { friendlyError } from "./ui/format.js";
 import { keysAsk, keysAskSecret } from "./ui/settingsMenu.js";
 import { keySessions } from "./state.js";
 import { saveExchangeCredentials, getDecryptedCredentials } from "../services/credentialService.js";
@@ -32,7 +33,8 @@ function neverSilent(name: string, fn: (ctx: any) => Promise<void>) {
       logger.error({ err }, name);
       try {
         const lang = ctx.from ? localeCode((await prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } }))?.locale) : "ru";
-        await ctx.reply(getLocale(lang).genericError);
+        const raw = err instanceof Error ? err.message : String(err);
+        await ctx.reply(friendlyError(raw, lang), { parse_mode: "HTML" });
       } catch {
         /* ignore */
       }
@@ -124,7 +126,8 @@ export async function startTelegramBot() {
     }
     logger.error({ err: err.error }, "Telegram bot error");
     try {
-      await err.ctx?.reply("⚠️ Не получилось выполнить действие. Попробуйте ещё раз.");
+      const raw = err.error instanceof Error ? err.error.message : String(err.error);
+      await err.ctx?.reply(friendlyError(raw, "ru"), { parse_mode: "HTML" });
     } catch {
       /* ignore */
     }
@@ -172,6 +175,9 @@ export async function startTelegramBot() {
   bot.command("paper", act("paper"));
   bot.command("panic", act("panic"));
   bot.command("scan", act("signals"));
+  bot.command("signals", act("signals"));
+  bot.command("stats", act("stats"));
+  bot.command("auto", act("auto_menu"));
   bot.command("risk", act("risk"));
   bot.command("keys", act("keys"));
   bot.command("testorder", act("testorder"));
@@ -279,7 +285,7 @@ export async function startTelegramBot() {
     } catch (err) {
       logger.error({ err }, "text message");
       try {
-        await ctx.reply("⚠️ Не получилось выполнить действие. Попробуйте ещё раз.");
+        await ctx.reply(friendlyError(err instanceof Error ? err.message : String(err), "ru"), { parse_mode: "HTML" });
       } catch {
         /* ignore */
       }

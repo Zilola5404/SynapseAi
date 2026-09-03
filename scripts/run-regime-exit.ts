@@ -77,9 +77,6 @@ function rowLine(label: string, trades: WalkTrade[]) {
 async function main() {
   const started = new Date().toISOString();
   const run = await runParityWalk();
-  const v24 = run.variants["24h"] || [];
-  const allowed = extraCols(v24);
-  const blocked = extraCols(run.shadows);
 
   const holdRows = EXIT_HOLD_VARIANTS.map((v) => {
     const trades = run.variants[v.label] || [];
@@ -87,47 +84,63 @@ async function main() {
     return { label: v.label, expectancyR: m.expectancyR, maxDrawdownR: m.maxDrawdownR, trades: m.trades };
   });
   const policy = selectCanonicalExit(holdRows);
+  const canonical = run.variants[policy.id] || [];
+  const allowed = extraCols(canonical);
+  const blocked = extraCols(run.shadows);
 
   const byRegime: Record<string, WalkTrade[]> = {};
-  for (const t of v24) {
+  for (const t of canonical) {
     byRegime[t.marketRegime] = byRegime[t.marketRegime] || [];
     byRegime[t.marketRegime].push(t);
   }
 
   const scoreBuckets: { label: string; pred: (n: number) => boolean }[] = [
+    { label: "8–9", pred: (n) => n >= 8 && n <= 9 },
     { label: "10", pred: (n) => n === 10 },
     { label: "11", pred: (n) => n === 11 },
+    { label: "10–11", pred: (n) => n >= 10 && n <= 11 },
     { label: "12", pred: (n) => n === 12 },
     { label: "13", pred: (n) => n === 13 },
+    { label: "12–13", pred: (n) => n >= 12 && n <= 13 },
     { label: "14", pred: (n) => n === 14 },
     { label: "15", pred: (n) => n >= 15 },
   ];
 
-  const aPlus = v24.filter((t) => t.grade === "A+");
-  const aOnly = v24.filter((t) => t.grade === "A");
+  const aPlus = canonical.filter((t) => t.grade === "A+");
+  const aOnly = canonical.filter((t) => t.grade === "A");
   const missing: Record<string, number> = {};
   for (const k of FACTOR_KEYS) missing[k] = aOnly.filter((t) => !t.factors[k]).length;
   const shadowAPlus = run.shadows.filter((t) => t.grade === "A+").length;
 
   const wfLines: string[] = [];
+  const oosExpectancies: { id: number; exp: number; pf: number; n: number; dd: number }[] = [];
   let posOos = 0;
   let negOos = 0;
   for (const w of run.windows) {
-    const train = v24.filter((t) => t.t >= w.trainStart && t.t < w.trainEnd);
-    const val = v24.filter((t) => t.t >= w.valStart && t.t < w.valEnd);
-    const oos = v24.filter((t) => t.t >= w.oosStart && t.t < w.oosEnd);
+    const train = canonical.filter((t) => t.t >= w.trainStart && t.t < w.trainEnd);
+    const val = canonical.filter((t) => t.t >= w.valStart && t.t < w.valEnd);
+    const oos = canonical.filter((t) => t.t >= w.oosStart && t.t < w.oosEnd);
     const tr = computeRMetrics(train);
     const va = computeRMetrics(val);
     const oo = computeRMetrics(oos);
     if (oo.trades && oo.expectancyR > 0) posOos += 1;
     if (oo.trades && oo.expectancyR <= 0) negOos += 1;
     const pf = Number.isFinite(oo.profitFactor) ? oo.profitFactor.toFixed(2) : "n/a";
+    if (oo.trades) oosExpectancies.push({ id: w.id, exp: oo.expectancyR, pf: oo.profitFactor, n: oo.trades, dd: oo.maxDrawdownR });
     wfLines.push(
       `| ${w.id} | ${fmtR(tr.expectancyR)} (n=${tr.trades}) | ${fmtR(va.expectancyR)} (n=${va.trades}) | ${fmtR(oo.expectancyR)} (n=${oo.trades}) | ${pf} | ${fmtR(oo.maxDrawdownR)} |`
     );
   }
   const oosWindows = posOos + negOos;
   const posPct = oosWindows ? posOos / oosWindows : 0;
+  const sortedOos = [...oosExpectancies].sort((a, b) => a.exp - b.exp);
+  const medianOos = sortedOos.length
+    ? sortedOos.length % 2
+      ? sortedOos[(sortedOos.length - 1) / 2].exp
+      : (sortedOos[sortedOos.length / 2 - 1].exp + sortedOos[sortedOos.length / 2].exp) / 2
+    : 0;
+  const worstOos = sortedOos[0];
+  const bestOos = sortedOos[sortedOos.length - 1];
 
   const trending = byRegime.TRENDING || [];
   const highVol = byRegime.HIGH_VOLATILITY || [];
@@ -178,7 +191,7 @@ async function main() {
     "# REGIME PERFORMANCE",
     "",
     `**Run:** ${started}`,
-    "Source: allowed (traded) 24h-hold fills on the frozen entry set. LOW_VOLATILITY is **not** a RegimeState in Intelligence — it is not invented here.",
+    `Source: allowed (traded) fills under canonical **${policy.id}**. LOW_VOLATILITY is **not** a RegimeState in Intelligence — it is not invented here.`,
     "",
     "| Regime | Trades | Win rate | Expectancy R | Median R | PF | Max DD R | Average R |",
     "|---|---:|---:|---:|---:|---:|---:|---:|",
@@ -199,11 +212,11 @@ async function main() {
     "# REGIME GATE VALIDATION",
     "",
     `**Run:** ${started}`,
-    "Shadow = would have been A/A+ TRADE if `regime.noNewTrades` were ignored. **Not traded.** Same fill model (24h hold for this comparison).",
+    `Shadow = would have been A/A+ TRADE if \`regime.noNewTrades\` were ignored. **Not traded.** Same fill model as canonical **${policy.id}**.`,
     "",
     "| Group | Trades | Expectancy R | PF | Max DD R | Avg hold | Avg MFE | Avg MAE | Win rate |",
     "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
-    rowLine("Allowed (live TRADE)", v24),
+    rowLine("Allowed (live TRADE)", canonical),
     rowLine("Blocked by regime (shadow)", run.shadows),
     "",
     `Allowed n=${allowed.trades} exp ${fmtR(allowed.expectancyR)}. Shadow n=${blocked.trades} exp ${fmtR(blocked.expectancyR)}.`,
@@ -222,12 +235,12 @@ async function main() {
     "# SCORE DISTRIBUTION",
     "",
     `**Run:** ${started}`,
-    "A+ threshold **not** changed. Diagnostic only.",
+    "A+ threshold **not** changed. Diagnostic only. Executed A/A+ under the canonical hold.",
     "",
     "| Score | n | Expectancy R | PF | Win rate |",
     "|---:|---:|---:|---:|---:|",
     ...scoreBuckets.map((b) => {
-      const rows = v24.filter((t) => b.pred(t.confluenceScore));
+      const rows = canonical.filter((t) => b.pred(t.confluenceScore));
       const m = extraCols(rows);
       const pf = Number.isFinite(m.profitFactor) ? m.profitFactor.toFixed(2) : "n/a";
       return `| ${b.label} | ${m.trades} | ${fmtR(m.expectancyR)} | ${pf} | ${fmtPct(m.winRate)} |`;
@@ -269,7 +282,7 @@ async function main() {
     "# WALK-FORWARD CONSISTENCY",
     "",
     `**Run:** ${started}`,
-    "Hold used for this table: **24h** (same as the previous published walk).",
+    `Hold used for this table: **${policy.id}** (canonical EXIT_POLICY).`,
     "",
     "| Window | Train R | Validation R | OOS R | OOS PF | OOS DD |",
     "|---|---:|---:|---:|---:|---:|",
@@ -278,6 +291,9 @@ async function main() {
     `| Positive OOS windows | **${posOos}** |`,
     `| Negative OOS windows | **${negOos}** |`,
     `| % profitable OOS windows | **${fmtPct(posPct)}** |`,
+    `| Median OOS expectancy | **${fmtR(medianOos)}** |`,
+    `| Worst OOS | **${worstOos ? `Window ${worstOos.id} ${fmtR(worstOos.exp)} n=${worstOos.n}` : "—"}** |`,
+    `| Best OOS | **${bestOos ? `Window ${bestOos.id} ${fmtR(bestOos.exp)} n=${bestOos.n}` : "—"}** |`,
     "",
     "A single +R OOS total can hide a losing window. Percent of profitable OOS windows is the consistency check.",
     "",
@@ -298,7 +314,7 @@ async function main() {
         : [
             "Edge is not confirmed as a universal, deployable strategy.",
             "",
-            `- Overall 24h expectancy ${fmtR(overall.expectancyR)} on ${overall.trades} trades.`,
+            `- Overall ${policy.id} expectancy ${fmtR(overall.expectancyR)} on ${overall.trades} trades.`,
             `- A+ executed n=${aPlus.length} (need 30).`,
             `- Profitable OOS windows: ${fmtPct(posPct)} (${posOos}/${oosWindows}).`,
             `- Exit parity: ${policy.id}.`,

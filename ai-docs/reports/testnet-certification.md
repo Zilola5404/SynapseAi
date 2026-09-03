@@ -47,7 +47,7 @@ Telegram → Market Data → Intelligence → Risk → min BTCUSDT MARKET → FI
 
 - **Live TP1→70% / TP2→40% / TP3→0% на бирже** — для min BTCUSDT лестница не ставится (фильтр LOT_SIZE). Нужен больший лот (≥0.003) или другая пара.
 - **Paper soak 2–4 недели и Testnet soak несколько недель** — по времени не выполнены. Процесс `npm run dev` гонялся часами 2026-09-02, не недели. План: `ai-docs/reports/soak_24h.md`.
-- **A+ статистически лучше A** — выборки закрытых сделок с grade недостаточно (см. `reports/strategy-validation.md`).
+- **A+ статистически лучше A** — выборки закрытых сделок с grade недостаточно (см. `reports/strategy-validation.md`, A+=3).
 - **Funding** — поле `order_history.fundingUsdt` есть, в формуле Net явно 0, пока нет funding worker.
 
 ## Safety (код + тесты)

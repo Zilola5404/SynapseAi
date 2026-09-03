@@ -29,7 +29,7 @@ ${signal.reasoning}
     const json = JSON.parse((res.text || "{}").replace(/```json|```/g, ""));
     return { pass: Boolean(json.pass), note: String(json.note || "") };
   } catch (err) {
-    logger.warn({ err }, "AI filter недоступен, сигнал не блокируем");
+    logger.warn({ err }, "[AI] filter unavailable — not blocking the signal");
     return { pass: true, note: "AI filter error, strategy signal kept" };
   }
 }

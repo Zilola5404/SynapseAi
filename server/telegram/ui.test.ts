@@ -14,6 +14,7 @@ assert.match(money(-7.54), /\-\$7\.54/);
 assert.match(friendlyError("Connect Timeout Error", "ru"), /Временно не удалось/);
 assert.match(friendlyError("Просадка 50.00% >= 8%", "ru"), /Просадка/);
 assert.doesNotMatch(friendlyError("Connect Timeout Error", "ru"), /ConnectTimeout|api\.binance/);
+assert.match(friendlyError("TRADING_COST_TOO_HIGH: Net RR 0.7", "ru"), /не покрывает расходы/);
 assert.match(
   tradeOpenedMessage("ru", {
     symbol: "BTCUSDT",
@@ -32,8 +33,9 @@ assert.match(
 );
 assert.equal(closeReasonLabel("MANUAL", "ru"), "Закрыта пользователем");
 assert.match(tradeClosedMessage("ru", { symbol: "BTCUSDT", pnl: 18, fees: 2, reason: "TAKE_PROFIT", grossPnl: 20, entryFee: 1, exitFee: 1 }), /СДЕЛКА ЗАКРЫТА[\s\S]*Комиссия входа[\s\S]*Комиссия выхода/);
-assert.equal(matchReply("▶️ Старт", "ru"), "start_bot");
-assert.equal(matchReply("❓ Помощь", "ru"), "help");
+assert.equal(matchReply("📊 Рынок", "ru"), "market");
+assert.equal(matchReply("ℹ️ Помощь", "ru"), "help");
+assert.equal(matchReply("🤖 Автоторговля", "ru"), "auto_menu");
 assert.match(sizeSettingsScreen("ru", {
   positionSizeMode: "AUTO",
   riskPerTradePct: 0.5,
@@ -78,7 +80,7 @@ assert.match(
     potentialProfitUsdt: 100,
     expiresAt: new Date(Date.now() + 60_000),
   }, "confirm"),
-  /НАШЁЛ СЕТАП[\s\S]*ПОКУПКА[\s\S]*14 \/ 15[\s\S]*не вероятность прибыли[\s\S]*Предлагаемый размер/
+  /НОВЫЙ СИГНАЛ[\s\S]*LONG[\s\S]*не гарантируется/
 );
 
 console.log("  PASS  Telegram UX: Russian copy, friendly errors, no raw stack traces");

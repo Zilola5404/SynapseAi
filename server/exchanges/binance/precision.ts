@@ -45,7 +45,7 @@ export async function refreshPrecision(isTestnet: boolean) {
     cache.set(key, { at: Date.now(), filters: parseFilters(info) });
     logger.info({ symbols: cache.get(key)?.filters.size, isTestnet }, "exchangeInfo precision cached");
   } catch (err) {
-    logger.warn({ err }, "exchangeInfo недоступен, используем fallback precision");
+    logger.warn({ err }, "[BINANCE] exchangeInfo unavailable, using fallback precision");
   }
 }
 

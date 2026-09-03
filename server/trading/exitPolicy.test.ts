@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { selectCanonicalExit } from "./exitPolicy.js";
+import { EXIT_POLICY, selectCanonicalExit } from "./exitPolicy.js";
+import { BACKTEST } from "./backtest/config.js";
 
 const noneWins = selectCanonicalExit([
   { label: "NO_TIME_EXIT", expectancyR: 0.1, maxDrawdownR: -4 },
@@ -20,5 +21,9 @@ const capWins = selectCanonicalExit([
 ]);
 assert.equal(capWins.id, "24h");
 assert.equal(capWins.variant, "A");
+
+assert.equal(EXIT_POLICY.id, "NO_TIME_EXIT");
+assert.equal(EXIT_POLICY.maxHoldMs, 0);
+assert.equal(BACKTEST.maxHoldBars, EXIT_POLICY.maxHoldBars);
 
 console.log("  PASS  Exit policy selector: parity default, shortest qualifying cap");

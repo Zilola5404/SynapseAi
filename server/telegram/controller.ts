@@ -13,7 +13,7 @@ import { isSignalExpired, parseSignalFactors, type SignalFactor } from "../tradi
 import { localeCode, type LocaleCode } from "./locales/index.js";
 import { friendlyError } from "./ui/format.js";
 import { homeScreen, botStartedText, botStoppedText, lockedNeedUnlock } from "./ui/mainMenu.js";
-import { marketOverview, marketCoin } from "./ui/marketMenu.js";
+import { marketOverview, marketCoin, marketVerdict } from "./ui/marketMenu.js";
 import { positionsEmpty, positionCard } from "./ui/positionsMenu.js";
 import { sizeSettingsScreen, sizeWhyScreen, sizeModeWarning } from "./ui/sizeMenu.js";
 import {
@@ -25,14 +25,12 @@ import {
   signalSkippedText,
   noTradeText,
 } from "./ui/signalMenu.js";
-import { historyList, resultsScreen, statsScreen } from "./ui/historyMenu.js";
+import { historyList, resultsScreen, statsScreen, tradeDetailScreen } from "./ui/historyMenu.js";
 import { riskScreen, riskExplain, riskEdit } from "./ui/riskMenu.js";
 import {
   settingsScreen,
   languageScreen,
   modeExplain,
-  liveWarn1,
-  liveWarn2,
   notifyScreen,
   pairsScreen,
   keysAsk,
@@ -47,6 +45,14 @@ import { telegramRuntime } from "./runtime.js";
 import { paperSoakScreen } from "./ui/paperMenu.js";
 import { loadPaperSoak } from "./paperSoakQuery.js";
 import { testOrderProgressMessage, testOrderFilledMessage, tradeProtectionMessage } from "./messages.js";
+import { autoMenuScreen, autoConfirmScreen } from "./ui/autoMenu.js";
+import { classifyTradeOrigin, isStrategyTrade, originBadge } from "../trading/tradeSource.js";
+import { estimateTradeCosts } from "../trading/risk/tradeCostGate.js";
+import { getDecryptedCredentials } from "../services/credentialService.js";
+import { testOrderFailedMessage, parseBinancePayload, redactSecrets, logTestOrderFailed } from "./testOrderError.js";
+import { logger } from "../logger.js";
+import { formatDecisionTelegram, formatIdleTelegram } from "../trading/decision/decisionRecord.js";
+import { findActiveSetupPause, latestIdleDecision, parseDecisionReasons } from "../trading/decision/persist.js";
 
 export type TgUser = User & { riskSettings: RiskSettings | null; credentials: ExchangeCredential | null };
 
@@ -144,10 +150,23 @@ async function showMarket(reply: Reply, user: TgUser) {
 async function showCoin(reply: Reply, user: TgUser, symbol: string) {
   const snap = await snapshotFor(symbol).catch(() => null);
   const live = binanceWsManager.getPrice(symbol);
+  const htf = snap?.h4?.trend || snap?.h1?.trend || snap?.m5?.trend || "NEUTRAL";
+  const regime = snap?.h1?.regime || snap?.m5?.regime || "";
+  const structure = snap?.h1?.structure || snap?.m5?.structure || "";
+  const vol = snap?.h1?.volatility || snap?.m5?.volatility || "";
+  const keyLevel =
+    htf === "BEARISH"
+      ? snap?.h1?.nearestResistance || snap?.m5?.nearestResistance || null
+      : snap?.h1?.nearestSupport || snap?.m5?.nearestSupport || null;
   const screen = marketCoin(langOf(user), {
     symbol,
-    price: live || snap?.m5?.price || null,
-    trend: snap?.h1?.trend || snap?.m5?.trend || "NEUTRAL",
+    price: live || snap?.m5?.price || snap?.h1?.price || null,
+    htfTrend: htf,
+    regime,
+    structure,
+    keyLevel: keyLevel || null,
+    volatility: vol,
+    verdict: marketVerdict(htf, regime),
   });
   await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
 }
@@ -190,7 +209,7 @@ async function showSignals(reply: Reply, user: TgUser) {
   const expired = isSignalExpired(view.expiresAt || undefined) || view.status === "EXPIRED";
   const confirm = Boolean((user as { confirmBeforeOpen?: boolean }).confirmBeforeOpen);
   const text = signalOfferText(lang, view, confirm ? "confirm" : "auto");
-  const kb = signalOfferKeyboard(lang, view.id || "x", expired);
+  const kb = signalOfferKeyboard(lang, view.id || "x", expired, user.tradingMode);
   kb.row().text(lang === "en" ? "📡 History" : "📡 История", "sighist");
   await reply(text, { parse_mode: "HTML", reply_markup: kb });
 }
@@ -323,6 +342,47 @@ async function showWhySize(reply: Reply, user: TgUser, positionId: string) {
   await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
 }
 
+async function showWhyOpen(reply: Reply, user: TgUser, positionId: string) {
+  const lang = langOf(user);
+  const analysis = await prisma.tradeAnalysis.findFirst({
+    where: { userId: user.id, positionId },
+    orderBy: { createdAt: "desc" },
+  });
+  const rec = parseDecisionReasons(analysis?.reasons);
+  if (rec) {
+    await reply(formatDecisionTelegram(rec, lang), { parse_mode: "HTML" });
+    return;
+  }
+  await reply(
+    lang === "en"
+      ? "📊 Decision record is not stored for this trade (opened before this version)."
+      : "📊 Запись решения для этой сделки не сохранена (открыта до этого обновления).",
+    { parse_mode: "HTML" }
+  );
+}
+
+async function showWhyIdle(reply: Reply, user: TgUser) {
+  const lang = langOf(user);
+  const last = await latestIdleDecision(user.id);
+  const pause = await findActiveSetupPause(user.id);
+  const clusterNote = pause
+    ? lang === "en"
+      ? `${pause.symbol} ${pause.side} setups are paused until ${pause.until.toISOString().slice(0, 16)} UTC.`
+      : `${pause.symbol} ${pause.side} сетапы на паузе до ${pause.until.toISOString().slice(0, 16)} UTC.`
+    : "";
+  await reply(
+    formatIdleTelegram({
+      lang,
+      autoOn: user.autoTradeEnabled,
+      pausedUntil: user.pauseUntil,
+      locked: user.accountLocked,
+      last,
+      clusterNote,
+    }),
+    { parse_mode: "HTML" }
+  );
+}
+
 function periodSince(period: string) {
   const now = Date.now();
   if (period === "today") {
@@ -335,6 +395,21 @@ function periodSince(period: string) {
   return new Date(0);
 }
 
+async function originsForHistory(user: TgUser, rows: { positionId: string | null; isPaperTrade: boolean }[]) {
+  const ids = rows.map((r) => r.positionId).filter((id): id is string => Boolean(id));
+  const positions = ids.length
+    ? await prisma.activePosition.findMany({ where: { id: { in: ids } }, select: { id: true, aiRationale: true } })
+    : [];
+  const map = new Map(positions.map((p) => [p.id, p.aiRationale]));
+  return rows.map((r) =>
+    classifyTradeOrigin({
+      isPaperTrade: r.isPaperTrade,
+      tradingMode: user.tradingMode,
+      rationale: r.positionId ? map.get(r.positionId) || "" : "",
+    })
+  );
+}
+
 async function showHistory(reply: Reply, user: TgUser, period: string) {
   const since = periodSince(period);
   const rows = await prisma.orderHistory.findMany({
@@ -342,11 +417,39 @@ async function showHistory(reply: Reply, user: TgUser, period: string) {
     orderBy: { closedAt: "desc" },
     take: 15,
   });
+  const origins = await originsForHistory(user, rows);
+  const lang = langOf(user);
   const screen = historyList(
-    langOf(user),
-    rows.map((r) => ({ symbol: r.symbol, pnl: r.pnl, closedAt: r.closedAt })),
+    lang,
+    rows.map((r, i) => ({
+      id: r.id,
+      symbol: r.symbol,
+      pnl: r.pnl,
+      closedAt: r.closedAt,
+      badge: originBadge(origins[i], lang),
+    })),
     period === "7d" || period === "30d" || period === "today" ? period : "all"
   );
+  await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
+}
+
+async function showTradeDetail(reply: Reply, user: TgUser, id: string) {
+  const row = await prisma.orderHistory.findFirst({ where: { id, userId: user.id } });
+  if (!row) return;
+  const [origin] = await originsForHistory(user, [row]);
+  const lang = langOf(user);
+  const screen = tradeDetailScreen(lang, {
+    symbol: row.symbol,
+    side: row.side,
+    entry: row.entryPrice,
+    exit: row.exitPrice,
+    gross: row.grossPnl || row.pnl + (row.commissionUsdt || 0),
+    fees: row.commissionUsdt || 0,
+    funding: row.fundingUsdt || 0,
+    net: row.pnl,
+    reason: row.exitReason,
+    badge: originBadge(origin, lang),
+  });
   await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
 }
 
@@ -374,23 +477,32 @@ async function showResults(reply: Reply, user: TgUser) {
 
 async function showStats(reply: Reply, user: TgUser) {
   const rows = await prisma.orderHistory.findMany({ where: { userId: user.id }, orderBy: { closedAt: "asc" } });
-  const wins = rows.filter((r) => r.pnl > 0);
-  const losses = rows.filter((r) => r.pnl < 0);
+  const origins = await originsForHistory(user, rows);
+  const strategy = rows.filter((_, i) => isStrategyTrade(origins[i]));
+  const testTrades = rows.length - strategy.length;
+  const wins = strategy.filter((r) => r.pnl > 0);
+  const losses = strategy.filter((r) => r.pnl < 0);
+  const profit = wins.reduce((s, r) => s + r.pnl, 0);
+  const lossAbs = Math.abs(losses.reduce((s, r) => s + r.pnl, 0));
   let peak = 0;
   let equity = 0;
   let maxDd = 0;
-  for (const r of rows) {
+  for (const r of strategy) {
     equity += r.pnl;
     if (equity > peak) peak = equity;
     maxDd = Math.max(maxDd, peak - equity);
   }
+  const envLabel = user.tradingMode === "PAPER" ? "PAPER" : "TESTNET";
   const screen = statsScreen(langOf(user), {
-    trades: rows.length,
+    trades: strategy.length,
     wins: wins.length,
     losses: losses.length,
-    winRate: rows.length ? (wins.length / rows.length) * 100 : 0,
-    net: rows.reduce((s, r) => s + r.pnl, 0),
+    winRate: strategy.length ? (wins.length / strategy.length) * 100 : 0,
+    profitFactor: lossAbs > 0 ? profit / lossAbs : wins.length ? Infinity : 0,
+    net: strategy.reduce((s, r) => s + r.pnl, 0),
     maxDd,
+    testTrades,
+    envLabel,
   });
   await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
 }
@@ -408,9 +520,56 @@ export async function handleAction(
       await showHome(reply, user);
       return;
     }
-    if (action === "start_bot") {
+    if (action === "auto_menu") {
+      const screen = autoMenuScreen({
+        lang,
+        mode: user.tradingMode,
+        autoOn: user.autoTradeEnabled,
+        locked: user.accountLocked,
+      });
+      await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
+      return;
+    }
+    if (action === "start_bot" || action === "auto_ask") {
       if (user.accountLocked) {
         await reply(lockedNeedUnlock(lang));
+        return;
+      }
+      if (user.autoTradeEnabled) {
+        const kb = new InlineKeyboard().text(lang === "en" ? "🏠 Main menu" : "🏠 Главное меню", "home");
+        await reply(botStartedText(lang, user.tradingMode), { parse_mode: "HTML", reply_markup: kb });
+        return;
+      }
+      const screen = autoConfirmScreen(lang, user.tradingMode === "LIVE" ? "TESTNET" : user.tradingMode);
+      await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
+      return;
+    }
+    if (action === "auto_yes") {
+      if (user.accountLocked) {
+        await reply(lockedNeedUnlock(lang));
+        return;
+      }
+      if (user.tradingMode === "LIVE") {
+        await reply(
+          lang === "en"
+            ? "LIVE is disabled on this server. Switch to TESTNET or PAPER."
+            : "LIVE на этом сервере выключен. Переключитесь на TESTNET или PAPER."
+        );
+        return;
+      }
+      const snap = await systemSnapshot();
+      const keysOk =
+        user.tradingMode !== "TESTNET" || Boolean(await getDecryptedCredentials(user.id).catch(() => null));
+      const fail: string[] = [];
+      if (!snap.marketDataHealthy && !snap.binanceRest) fail.push("Market Data");
+      if (!keysOk) fail.push("API");
+      if (user.accountLocked) fail.push("Kill Switch");
+      if (fail.length) {
+        await reply(
+          lang === "en"
+            ? `⚠️ Auto trading was not enabled.\n\nFailed checks:\n${fail.map((f) => `❌ ${f}`).join("\n")}`
+            : `⚠️ Автоторговля не включена.\n\nНе прошли проверки:\n${fail.map((f) => `❌ ${f}`).join("\n")}`
+        );
         return;
       }
       await tradingOrchestrator.startScanner(user.id);
@@ -448,6 +607,14 @@ export async function handleAction(
       await showWhySize(reply, user, action.slice(7));
       return;
     }
+    if (action.startsWith("whyopen:")) {
+      await showWhyOpen(reply, user, action.slice(8));
+      return;
+    }
+    if (action === "whyidle") {
+      await showWhyIdle(reply, user);
+      return;
+    }
     if (action.startsWith("close:")) {
       await tradingOrchestrator.closePosition(user.id, action.slice(6), "MANUAL");
       await reply(lang === "en" ? "The trade is being closed." : "Сделка закрывается.", { parse_mode: "HTML" });
@@ -455,6 +622,10 @@ export async function handleAction(
     }
     if (action === "history" || action.startsWith("hist:")) {
       await showHistory(reply, user, action.startsWith("hist:") ? action.slice(5) : "today");
+      return;
+    }
+    if (action.startsWith("histid:")) {
+      await showTradeDetail(reply, user, action.slice(7));
       return;
     }
     if (action === "results") {
@@ -601,19 +772,12 @@ export async function handleAction(
       await reply(lang === "en" ? "Mode: TESTNET. Binance test funds." : "Режим: TESTNET. Тестовые средства Binance.");
       return;
     }
-    if (action === "mode_live") {
-      const screen = liveWarn1(lang);
-      await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
-      return;
-    }
-    if (action === "live_confirm") {
-      const screen = liveWarn2(lang);
-      await reply(screen.text, { parse_mode: "HTML", reply_markup: screen.markup });
-      return;
-    }
-    if (action === "live_yes") {
-      await tradingOrchestrator.enableLive(user.id);
-      await reply(lang === "en" ? "LIVE is on with conservative limits." : "LIVE включён с консервативными лимитами.");
+    if (action === "mode_live" || action === "live_confirm" || action === "live_yes") {
+      await reply(
+        lang === "en"
+          ? "LIVE is disabled by default. This first release runs PAPER / TESTNET only."
+          : "LIVE выключен по умолчанию. Первый запуск работает только в PAPER / TESTNET."
+      );
       return;
     }
     if (action === "notify") {
@@ -684,28 +848,42 @@ export async function handleAction(
     }
     if (action === "testorder") {
       await reply(testOrderProgressMessage(lang), { parse_mode: "HTML" });
-      const pos = await tradingOrchestrator.placeCertifiedTestOrder(user.id, "BTCUSDT");
-      const filled = pos as typeof pos & { tp1?: number; tp2?: number; tp3?: number };
-      await reply(
-        testOrderFilledMessage(lang, {
-          symbol: pos.symbol,
-          side: pos.side,
-          entry: pos.entryPrice,
-          quantity: pos.quantity,
-          orderId: String(pos.exchangeOrderId || pos.entryOrderId || "—"),
-          status: "FILLED",
-        }),
-        { parse_mode: "HTML" }
-      );
-      await reply(
-        tradeProtectionMessage(lang, {
-          sl: pos.stopLossPrice,
-          tp1: filled.tp1,
-          tp2: filled.tp2 || pos.takeProfitPrice,
-          tp3: filled.tp3,
-        }),
-        { parse_mode: "HTML" }
-      );
+      try {
+        const pos = await tradingOrchestrator.placeCertifiedTestOrder(user.id, "BTCUSDT");
+        const filled = pos as typeof pos & { tp1?: number; tp2?: number; tp3?: number };
+        await reply(
+          testOrderFilledMessage(lang, {
+            symbol: pos.symbol,
+            side: pos.side,
+            entry: pos.entryPrice,
+            quantity: pos.quantity,
+            orderId: String(pos.exchangeOrderId || pos.entryOrderId || "—"),
+            status: "FILLED",
+          }),
+          { parse_mode: "HTML" }
+        );
+        await reply(
+          tradeProtectionMessage(lang, {
+            sl: pos.stopLossPrice,
+            tp1: filled.tp1,
+            tp2: filled.tp2 || pos.takeProfitPrice,
+            tp3: filled.tp3,
+          }),
+          { parse_mode: "HTML" }
+        );
+      } catch (err) {
+        const raw = redactSecrets(err instanceof Error ? err.message : String(err));
+        const parsed = parseBinancePayload(raw);
+        const payload = logTestOrderFailed({
+          symbol: "BTCUSDT",
+          side: "BUY",
+          quantity: "min",
+          errorCode: parsed.code,
+          exchangeMessage: parsed.message,
+        });
+        logger.error(payload, "[TEST_ORDER_FAILED]");
+        await reply(testOrderFailedMessage(lang, raw), { parse_mode: "HTML" });
+      }
       return;
     }
     if (action === "testclose") {
@@ -755,9 +933,19 @@ export async function handleAction(
     if (action.startsWith("siginfo:")) {
       const row = await prisma.signal.findFirst({ where: { id: action.slice(8), userId: user.id } });
       if (!row) return;
-      await reply(signalDetailsText(lang, viewFromSignalRow(row)), {
+      const view = viewFromSignalRow(row);
+      const cost =
+        view.entry && view.sl && view.tp && view.quantity
+          ? estimateTradeCosts({
+              entry: view.entry,
+              stopLoss: view.sl,
+              takeProfit: view.tp,
+              quantity: view.quantity,
+            })
+          : null;
+      await reply(signalDetailsText(lang, view, { costUsdt: cost?.totalCosts ?? null, riskCheck: "PASSED" }), {
         parse_mode: "HTML",
-        reply_markup: signalOfferKeyboard(lang, row.id, isSignalExpired(row.expiresAt) || row.status === "EXPIRED"),
+        reply_markup: signalOfferKeyboard(lang, row.id, isSignalExpired(row.expiresAt) || row.status === "EXPIRED", user.tradingMode),
       });
       return;
     }

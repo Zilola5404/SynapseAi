@@ -9,6 +9,7 @@ import { SCAN_UNIVERSE } from "../intelligence/config.js";
 import type { BinanceCandle } from "../../binance.js";
 import { BACKTEST, DAY_MS, EXIT_HOLD_VARIANTS, INTERVAL_MS } from "./config.js";
 import { simulateFill, type ExitReason, type FundingPoint } from "./fillModel.js";
+import { EXIT_POLICY } from "../exitPolicy.js";
 import { closedWindow, indexRangeForTime, rollingWalkForwardWindows, type WalkWindow } from "./mtf.js";
 import { classifyVeto, shadowSignalFromIntel, wouldTradeWithoutRegime } from "./shadowSignal.js";
 import type { StrategySignal } from "../types.js";
@@ -579,7 +580,7 @@ export async function runParityWalk(
       }
     }
     for (const e of collector.shadows) {
-      const fill = simulateFill(pack.m5, e.index, e.signal, pack.funding, 288);
+      const fill = simulateFill(pack.m5, e.index, e.signal, pack.funding, EXIT_POLICY.maxHoldBars);
       if (!fill) continue;
       shadow24.push(tagTrade(tradeFromStored(e, fill), windows));
     }

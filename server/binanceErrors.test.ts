@@ -5,8 +5,8 @@ const ts = classifyBinanceError(400, JSON.stringify({ code: -1021, msg: "Timesta
 assert.equal(ts.kind, "TIMESTAMP");
 assert.match(formatBinanceError(ts.kind, ts.message), /Рассинхрон/);
 
-const margin = classifyBinanceError(400, JSON.stringify({ code: -2019, msg: "Margin is insufficient." }));
-assert.equal(margin.kind, "INSUFFICIENT_MARGIN");
+const minN = classifyBinanceError(400, JSON.stringify({ code: -4164, msg: "Order's notional must be no smaller than 100." }));
+assert.equal(minN.kind, "MIN_NOTIONAL");
 
 const rate = classifyBinanceError(429, "too many requests");
 assert.equal(rate.kind, "RATE_LIMIT");
